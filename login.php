@@ -167,7 +167,7 @@ if (es_post()) {
                 </div>
                 <h2 class="font-display text-5xl xl:text-6xl font-extrabold leading-[1.05]">
                     Control total<br>
-                    de <span class="text-gold-400">Mantenimiento PRUEBA</span><br>
+                    de <span class="text-gold-400">Mantenimiento</span><br>
                     en un solo lugar.
                 </h2>
                 <p class="text-white/70 text-base max-w-md leading-relaxed">
