@@ -2,3 +2,5 @@ config/db.php
 *.log
 .DS_Store
 Thumbs.db
+backups/
+graphify-out/
