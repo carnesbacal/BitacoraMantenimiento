@@ -367,6 +367,20 @@ require_once __DIR__ . '/config/header.php';
     </div>
     <?php endif; ?>
 
+    <!-- Banner: borrador restaurado -->
+    <div x-show="borradorRestaurado" x-cloak x-transition
+         class="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm">
+        <div class="flex items-center gap-2">
+            <i data-lucide="history" class="w-4 h-4 flex-shrink-0"></i>
+            <span class="font-semibold">Borrador restaurado</span>
+            <span class="text-xs text-amber-700">— Tenías un formulario sin guardar. Puedes continuar donde lo dejaste.</span>
+        </div>
+        <button type="button" @click="descartarBorrador()"
+                class="text-xs font-semibold text-amber-700 hover:text-amber-900 underline whitespace-nowrap flex-shrink-0">
+            Descartar borrador
+        </button>
+    </div>
+
     <!-- Selector de plantillas (acelera el llenado) -->
     <div class="bg-gradient-to-br from-bacal-50 to-white rounded-xl border border-bacal-200 shadow-sm p-5 mb-5"
          x-data="{ abierto: false, plantillas: [], cargadas: false }"
@@ -526,15 +540,24 @@ require_once __DIR__ . '/config/header.php';
 
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Origen del reporte</label>
-                    <select name="origen_reporte_id"
-                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                        <option value="">— Sin especificar —</option>
-                        <?php foreach ($origenes as $o): ?>
-                        <option value="<?= $o['id'] ?>" <?= $valores['origen_reporte_id'] == $o['id'] ? 'selected' : '' ?>>
-                            <?= e($o['nombre']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="origen_reporte_id"
+                                class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            <option value="">— Sin especificar —</option>
+                            <?php foreach ($origenes as $o): ?>
+                            <option value="<?= $o['id'] ?>" <?= $valores['origen_reporte_id'] == $o['id'] ? 'selected' : '' ?>>
+                                <?= e($o['nombre']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (tiene_permiso('administrar')): ?>
+                        <button type="button" @click="abrirModalCatalogo('origen')"
+                                title="Crear nuevo origen"
+                                class="px-2.5 rounded-lg border border-zinc-300 text-zinc-500 hover:text-bacal-700 hover:border-bacal-400 transition-colors flex-shrink-0">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -571,28 +594,46 @@ require_once __DIR__ . '/config/header.php';
 
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Área *</label>
-                    <select name="area_id" required x-model="areaId" @change="buscarReincidencias()"
-                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                        <option value="">— Selecciona —</option>
-                        <?php foreach ($areas as $a): ?>
-                        <option value="<?= $a['id'] ?>" <?= $valores['area_id'] == $a['id'] ? 'selected' : '' ?>>
-                            <?= e($a['nombre']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="area_id" required x-model="areaId" @change="buscarReincidencias()"
+                                class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            <option value="">— Selecciona —</option>
+                            <?php foreach ($areas as $a): ?>
+                            <option value="<?= $a['id'] ?>" <?= $valores['area_id'] == $a['id'] ? 'selected' : '' ?>>
+                                <?= e($a['nombre']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (tiene_permiso('administrar')): ?>
+                        <button type="button" @click="abrirModalCatalogo('area')"
+                                title="Crear nueva área"
+                                class="px-2.5 rounded-lg border border-zinc-300 text-zinc-500 hover:text-bacal-700 hover:border-bacal-400 transition-colors flex-shrink-0">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Categoría</label>
-                    <select name="categoria_id" x-model="categoriaId" @change="buscarReincidencias()"
-                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                        <option value="">— Selecciona —</option>
-                        <?php foreach ($categorias as $c): ?>
-                        <option value="<?= $c['id'] ?>" <?= $valores['categoria_id'] == $c['id'] ? 'selected' : '' ?>>
-                            <?= e($c['nombre']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="categoria_id" x-model="categoriaId" @change="buscarReincidencias()"
+                                class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            <option value="">— Selecciona —</option>
+                            <?php foreach ($categorias as $c): ?>
+                            <option value="<?= $c['id'] ?>" <?= $valores['categoria_id'] == $c['id'] ? 'selected' : '' ?>>
+                                <?= e($c['nombre']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (tiene_permiso('administrar')): ?>
+                        <button type="button" @click="abrirModalCatalogo('categoria')"
+                                title="Crear nueva categoría"
+                                class="px-2.5 rounded-lg border border-zinc-300 text-zinc-500 hover:text-bacal-700 hover:border-bacal-400 transition-colors flex-shrink-0">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
 
                     <!-- Sugerencia de categoría según palabras clave -->
                     <div x-show="sugerenciasCategoria.length > 0 && !categoriaId" x-cloak x-transition
@@ -613,26 +654,45 @@ require_once __DIR__ . '/config/header.php';
 
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Subcategoría</label>
-                    <select name="subcategoria_id" x-model="subcategoriaId"
-                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                        <option value="">— Sin especificar —</option>
-                        <template x-for="sub in subcategoriasFiltradas" :key="sub.id">
-                            <option :value="sub.id" x-text="sub.nombre" :selected="String(sub.id) === String(subcategoriaId)"></option>
-                        </template>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="subcategoria_id" x-model="subcategoriaId"
+                                class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            <option value="">— Sin especificar —</option>
+                            <template x-for="sub in subcategoriasFiltradas" :key="sub.id">
+                                <option :value="sub.id" x-text="sub.nombre" :selected="String(sub.id) === String(subcategoriaId)"></option>
+                            </template>
+                        </select>
+                        <?php if (tiene_permiso('administrar')): ?>
+                        <button type="button" @click="abrirModalCatalogo('subcategoria')"
+                                :disabled="!categoriaId"
+                                title="Crear nueva subcategoría (requiere categoría seleccionada)"
+                                class="px-2.5 rounded-lg border border-zinc-300 text-zinc-500 hover:text-bacal-700 hover:border-bacal-400 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Tipo de trabajo</label>
-                    <select name="tipo_trabajo_id"
-                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                        <option value="">— Sin especificar —</option>
-                        <?php foreach ($tipos as $t): ?>
-                        <option value="<?= $t['id'] ?>" <?= $valores['tipo_trabajo_id'] == $t['id'] ? 'selected' : '' ?>>
-                            <?= e($t['nombre']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="tipo_trabajo_id"
+                                class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            <option value="">— Sin especificar —</option>
+                            <?php foreach ($tipos as $t): ?>
+                            <option value="<?= $t['id'] ?>" <?= $valores['tipo_trabajo_id'] == $t['id'] ? 'selected' : '' ?>>
+                                <?= e($t['nombre']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (tiene_permiso('administrar')): ?>
+                        <button type="button" @click="abrirModalCatalogo('tipo_trabajo')"
+                                title="Crear nuevo tipo de trabajo"
+                                class="px-2.5 rounded-lg border border-zinc-300 text-zinc-500 hover:text-bacal-700 hover:border-bacal-400 transition-colors flex-shrink-0">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <div>
@@ -1021,6 +1081,72 @@ require_once __DIR__ . '/config/header.php';
         </div>
 
     </form>
+
+    <!-- ============================================================ -->
+    <!-- Modal: Crear elemento de catálogo rápido                     -->
+    <!-- ============================================================ -->
+    <div x-show="modalAbierto" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="modalAbierto = false">
+        <div class="absolute inset-0 bg-black/50" @click="modalAbierto = false"></div>
+        <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" @click.stop
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100">
+
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-display font-bold text-zinc-900 flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="w-4 h-4 text-bacal-700"></i>
+                    <span x-text="modalTituloLabel"></span>
+                </h3>
+                <button type="button" @click="modalAbierto = false"
+                        class="text-zinc-400 hover:text-zinc-600 p-1 rounded">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div x-show="modalError" x-cloak
+                 class="mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs"
+                 x-text="modalError"></div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-zinc-600 mb-1 uppercase tracking-wide">Nombre *</label>
+                    <input type="text" x-model="modalNombre"
+                           x-ref="modalInput"
+                           @keydown.enter.prevent="guardarModalCatalogo()"
+                           placeholder="Nombre del nuevo elemento"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700 focus:ring-2 focus:ring-bacal-100">
+                </div>
+                <div x-show="modalMostrarColor">
+                    <label class="block text-xs font-bold text-zinc-600 mb-1 uppercase tracking-wide">Color</label>
+                    <div class="flex items-center gap-3">
+                        <input type="color" x-model="modalColor"
+                               class="w-10 h-10 rounded-lg cursor-pointer border border-zinc-300 p-0.5">
+                        <span class="text-xs text-zinc-500 font-mono" x-text="modalColor"></span>
+                    </div>
+                </div>
+                <p x-show="modalTipo === 'subcategoria'" class="text-xs text-zinc-500 italic">
+                    Se creará como subcategoría de la categoría seleccionada.
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-5">
+                <button type="button" @click="modalAbierto = false"
+                        class="px-4 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm font-medium hover:bg-zinc-50">
+                    Cancelar
+                </button>
+                <button type="button" @click="guardarModalCatalogo()" :disabled="modalCargando"
+                        class="px-4 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
+                    <template x-if="modalCargando">
+                        <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                    </template>
+                    <span x-text="modalCargando ? 'Guardando...' : 'Crear'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -1063,6 +1189,31 @@ function formIncidencia() {
         // === Fase 15: Sugerencia de categoría ===
         sugerenciasCategoria: [],
         timerCategoria: null,
+
+        // === Borrador localStorage ===
+        borradorRestaurado: false,
+
+        // === Modal catálogo rápido ===
+        modalAbierto: false,
+        modalTipo: '',
+        modalNombre: '',
+        modalColor: '#6B7280',
+        modalCargando: false,
+        modalError: '',
+
+        get modalTituloLabel() {
+            const labels = {
+                'area': 'Nueva área',
+                'categoria': 'Nueva categoría',
+                'subcategoria': 'Nueva subcategoría',
+                'tipo_trabajo': 'Nuevo tipo de trabajo',
+                'origen': 'Nuevo origen de reporte',
+            };
+            return labels[this.modalTipo] || 'Nuevo elemento';
+        },
+        get modalMostrarColor() {
+            return ['categoria', 'tipo_trabajo'].includes(this.modalTipo);
+        },
 
         get subcategoriasFiltradas() {
             if (!this.categoriaId) return [];
@@ -1220,6 +1371,161 @@ function formIncidencia() {
             window.dispatchEvent(new CustomEvent('abrir-bloque-solucion'));
         },
 
+        // === Borrador: guardar en localStorage ===
+        _guardarBorrador() {
+            const form = this.$refs.formulario;
+            if (!form) return;
+            const data = {
+                titulo: this.titulo,
+                descripcion: this.descripcion,
+                sucursalId: this.sucursalId,
+                areaId: this.areaId,
+                categoriaId: this.categoriaId,
+                subcategoriaId: this.subcategoriaId,
+                equipoId: this.equipoId,
+                severidadId: this.severidadId,
+                incidenciaPadreId: this.incidenciaPadreId,
+                esReincidencia: this.esReincidencia,
+                tipoTrabajoId: form.tipo_trabajo_id ? form.tipo_trabajo_id.value : '',
+                origenId: form.origen_reporte_id ? form.origen_reporte_id.value : '',
+                fechaEvento: form.fecha_evento ? form.fecha_evento.value : '',
+                reportanteNombre: form.reportante_nombre ? form.reportante_nombre.value : '',
+                reportantePuesto: form.reportante_puesto ? form.reportante_puesto.value : '',
+                asignadoId: form.asignado_a_id ? form.asignado_a_id.value : '',
+            };
+            localStorage.setItem('borrador_incidencia_nueva', JSON.stringify(data));
+        },
+
+        async _cargarBorrador() {
+            const saved = localStorage.getItem('borrador_incidencia_nueva');
+            if (!saved) return;
+            try {
+                const data = JSON.parse(saved);
+                // Solo restaurar si hay contenido real
+                if (!data.titulo && !data.descripcion) return;
+
+                if (data.titulo)      this.titulo      = data.titulo;
+                if (data.descripcion) this.descripcion = data.descripcion;
+                if (data.areaId)      this.areaId      = data.areaId;
+                if (data.categoriaId) this.categoriaId = data.categoriaId;
+                if (data.severidadId) this.severidadId = data.severidadId;
+                if (data.esReincidencia) this.esReincidencia = data.esReincidencia;
+                if (data.incidenciaPadreId) this.incidenciaPadreId = data.incidenciaPadreId;
+
+                if (data.sucursalId) {
+                    this.sucursalId = data.sucursalId;
+                    await this.cargarEquipos();
+                }
+                this.$nextTick(() => {
+                    if (data.equipoId)       this.equipoId       = data.equipoId;
+                    if (data.subcategoriaId) this.subcategoriaId = data.subcategoriaId;
+
+                    const form = this.$refs.formulario;
+                    if (!form) return;
+                    if (data.tipoTrabajoId  && form.tipo_trabajo_id)    form.tipo_trabajo_id.value    = data.tipoTrabajoId;
+                    if (data.origenId       && form.origen_reporte_id)  form.origen_reporte_id.value  = data.origenId;
+                    if (data.fechaEvento    && form.fecha_evento)        form.fecha_evento.value        = data.fechaEvento;
+                    if (data.reportanteNombre && form.reportante_nombre) form.reportante_nombre.value  = data.reportanteNombre;
+                    if (data.reportantePuesto && form.reportante_puesto) form.reportante_puesto.value  = data.reportantePuesto;
+                    if (data.asignadoId     && form.asignado_a_id)      form.asignado_a_id.value       = data.asignadoId;
+                });
+
+                this.borradorRestaurado = true;
+            } catch(e) {
+                console.error('Error restaurando borrador:', e);
+            }
+        },
+
+        descartarBorrador() {
+            localStorage.removeItem('borrador_incidencia_nueva');
+            this.borradorRestaurado = false;
+            location.reload();
+        },
+
+        // === Modal: abrir ===
+        abrirModalCatalogo(tipo) {
+            this.modalTipo    = tipo;
+            this.modalNombre  = '';
+            this.modalColor   = '#6B7280';
+            this.modalError   = '';
+            this.modalAbierto = true;
+            this.$nextTick(() => {
+                if (this.$refs.modalInput) this.$refs.modalInput.focus();
+                if (window.lucide) window.lucide.createIcons();
+            });
+        },
+
+        // === Modal: guardar ===
+        async guardarModalCatalogo() {
+            if (!this.modalNombre.trim()) {
+                this.modalError = 'El nombre es obligatorio.';
+                return;
+            }
+            this.modalCargando = true;
+            this.modalError    = '';
+            try {
+                const body = new FormData();
+                const csrfInput = document.querySelector('[name="_csrf"]');
+                body.append('_csrf',         csrfInput ? csrfInput.value : '');
+                body.append('tabla',         this.modalTipo);
+                body.append('nombre',        this.modalNombre.trim());
+                body.append('color',         this.modalColor);
+                body.append('categoria_id',  this.categoriaId || '');
+
+                const resp = await fetch('<?= url('api/catalogo_crear_rapido.php') ?>', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    body,
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    this._agregarOpcionSelect(this.modalTipo, data.id, data.nombre, data.color);
+                    this.modalAbierto = false;
+                } else {
+                    this.modalError = data.error || 'Error al crear.';
+                }
+            } catch(e) {
+                this.modalError = 'Error de red: ' + e.message;
+            }
+            this.modalCargando = false;
+        },
+
+        // === Modal: agregar nueva opción al select correspondiente ===
+        _agregarOpcionSelect(tipo, id, nombre, color) {
+            const form = this.$refs.formulario;
+            if (!form) return;
+
+            if (tipo === 'area') {
+                const sel = form.area_id;
+                if (sel) { sel.add(new Option(nombre, id)); sel.value = id; }
+                this.areaId = String(id);
+
+            } else if (tipo === 'categoria') {
+                const sel = form.categoria_id;
+                if (sel) { sel.add(new Option(nombre, id)); sel.value = id; }
+                this.categoriaId = String(id);
+                // Agregar al array de categorías para que subcategorías funcione
+                this.categorias.push({ id: id, nombre: nombre, color: color || '#6B7280', subcategorias: [] });
+
+            } else if (tipo === 'subcategoria') {
+                // Agregar al array de categorías (para subcategoriasFiltradas)
+                const cat = this.categorias.find(c => String(c.id) === String(this.categoriaId));
+                if (cat) {
+                    if (!cat.subcategorias) cat.subcategorias = [];
+                    cat.subcategorias.push({ id: id, nombre: nombre });
+                }
+                this.$nextTick(() => { this.subcategoriaId = String(id); });
+
+            } else if (tipo === 'tipo_trabajo') {
+                const sel = form.tipo_trabajo_id;
+                if (sel) { sel.add(new Option(nombre, id)); sel.value = id; }
+
+            } else if (tipo === 'origen') {
+                const sel = form.origen_reporte_id;
+                if (sel) { sel.add(new Option(nombre, id)); sel.value = id; }
+            }
+        },
+
         init() {
             // Cargar equipos al iniciar si ya hay sucursal
             if (this.sucursalId) this.cargarEquipos();
@@ -1234,6 +1540,49 @@ function formIncidencia() {
                 this.cargarSugerencias();
                 this.sugerirCategoria();
             }
+
+            // === Borrador: restaurar y configurar auto-guardado ===
+            this._cargarBorrador();
+
+            // Watchers de variables Alpine → guardar borrador
+            this.$watch('titulo',            () => this._guardarBorrador());
+            this.$watch('descripcion',       () => this._guardarBorrador());
+            this.$watch('sucursalId',        () => this._guardarBorrador());
+            this.$watch('areaId',            () => this._guardarBorrador());
+            this.$watch('categoriaId',       () => this._guardarBorrador());
+            this.$watch('subcategoriaId',    () => this._guardarBorrador());
+            this.$watch('equipoId',          () => this._guardarBorrador());
+            this.$watch('severidadId',       () => this._guardarBorrador());
+            this.$watch('esReincidencia',    () => this._guardarBorrador());
+            this.$watch('incidenciaPadreId', () => this._guardarBorrador());
+
+            // Campos no manejados por Alpine (selects nativos)
+            const form = this.$refs.formulario;
+            if (form) {
+                ['tipo_trabajo_id', 'origen_reporte_id', 'fecha_evento',
+                 'asignado_a_id'].forEach(name => {
+                    const el = form[name];
+                    if (el) el.addEventListener('change', () => this._guardarBorrador());
+                });
+                ['reportante_nombre', 'reportante_puesto'].forEach(name => {
+                    const el = form[name];
+                    if (el) el.addEventListener('input', () => this._guardarBorrador());
+                });
+
+                // Al enviar el formulario: limpiar borrador
+                form.addEventListener('submit', () => {
+                    localStorage.removeItem('borrador_incidencia_nueva');
+                });
+            }
+
+            // Focus del input al abrir modal
+            this.$watch('modalAbierto', (val) => {
+                if (val) {
+                    this.$nextTick(() => {
+                        if (this.$refs.modalInput) this.$refs.modalInput.focus();
+                    });
+                }
+            });
         },
 
         aplicarPlantilla(p) {
