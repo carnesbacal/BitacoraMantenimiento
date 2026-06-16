@@ -140,6 +140,65 @@ function buscar_reincidencias_similares(
 // ============================================================================
 
 /**
+ * Detecta el tipo MIME real de un archivo subido SIN depender de la
+ * extensión Fileinfo (finfo).
+ *
+ * Estrategia (en orden):
+ *   1. Si la extensión Fileinfo está disponible (XAMPP / servidores que la
+ *      tengan activada), la usa porque es la más precisa.
+ *   2. Si no, valida imágenes con getimagesize() (lee el contenido real).
+ *   3. Para PDF, ZIP y documentos de Office, verifica la "firma" de bytes
+ *      del inicio del archivo + la extensión, para no confiar solo en el
+ *      nombre que envía el navegador.
+ *
+ * Devuelve el MIME detectado, o null si no se pudo validar.
+ */
+function adjunto_detectar_mime(string $tmp, string $name): ?string {
+    // 1. Preferir finfo si existe (más fiable; sigue funcionando en local)
+    if (function_exists('finfo_open')) {
+        $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $mime = @finfo_file($finfo, $tmp);
+            finfo_close($finfo);
+            if (is_string($mime) && $mime !== '') {
+                return $mime;
+            }
+        }
+    }
+
+    // 2. Imágenes reales: getimagesize lee el contenido, no la extensión
+    $info = @getimagesize($tmp);
+    if ($info !== false && !empty($info['mime'])) {
+        return $info['mime']; // image/jpeg, image/png, image/gif, image/webp...
+    }
+
+    // 3. Firma de bytes (magic numbers) + extensión para documentos
+    $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    $fh   = @fopen($tmp, 'rb');
+    $head = $fh ? (string) fread($fh, 8) : '';
+    if ($fh) {
+        fclose($fh);
+    }
+
+    $es_pdf = (substr($head, 0, 4) === '%PDF');
+    $es_zip = (substr($head, 0, 4) === "PK\x03\x04");      // docx, xlsx, zip
+    $es_ole = (substr($head, 0, 4) === "\xD0\xCF\x11\xE0"); // doc, xls antiguos
+
+    switch ($ext) {
+        case 'pdf':  return $es_pdf ? 'application/pdf' : null;
+        case 'zip':  return $es_zip ? 'application/zip' : null;
+        case 'docx': return $es_zip ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : null;
+        case 'xlsx': return $es_zip ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : null;
+        case 'doc':  return $es_ole ? 'application/msword' : null;
+        case 'xls':  return $es_ole ? 'application/vnd.ms-excel' : null;
+        case 'txt':  return 'text/plain';
+        case 'csv':  return 'text/csv';
+    }
+
+    return null;
+}
+
+/**
  * Procesa el array $_FILES['adjuntos'] (múltiple) y guarda los archivos válidos.
  * Devuelve [exitos, errores] donde exitos es lista de archivos guardados.
  */
@@ -183,13 +242,12 @@ function procesar_adjuntos(int $incidencia_id, array $files, int $usuario_id): a
             continue;
         }
 
-        // Validar MIME real (no confiar en el nombre)
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mime  = finfo_file($finfo, $tmp);
-        finfo_close($finfo);
+        // Validar tipo real (no confiar en el nombre). Funciona con o sin Fileinfo.
+        $mime = adjunto_detectar_mime($tmp, $name);
 
-        if (!in_array($mime, ADJUNTOS_TIPOS_PERMITIDOS, true)) {
-            $errores[] = "\"$name\" tiene un tipo de archivo no permitido ($mime).";
+        if ($mime === null || !in_array($mime, ADJUNTOS_TIPOS_PERMITIDOS, true)) {
+            $detalle = $mime ? " ($mime)" : "";
+            $errores[] = "\"$name\" tiene un tipo de archivo no permitido$detalle.";
             continue;
         }
 

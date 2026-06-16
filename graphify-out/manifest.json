@@ -1,0 +1,627 @@
+{
+  "admin/anuncios.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "da36f86ed34f20775cabb2f6f3edbf82",
+    "semantic_hash": "da36f86ed34f20775cabb2f6f3edbf82"
+  },
+  "admin/archivar.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "47b2fb585a18deea0dd61c654c973dc7",
+    "semantic_hash": "47b2fb585a18deea0dd61c654c973dc7"
+  },
+  "admin/areas.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "e61965db12b7e00aeef134b7f5e03bcf",
+    "semantic_hash": "e61965db12b7e00aeef134b7f5e03bcf"
+  },
+  "admin/auditoria.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "c7f2bbec1df2187b3048f9267d6a9cd2",
+    "semantic_hash": "c7f2bbec1df2187b3048f9267d6a9cd2"
+  },
+  "admin/backups.php": {
+    "mtime": 1779588916.0,
+    "ast_hash": "2909709e7050e4a99ef5e5e405dac4c3",
+    "semantic_hash": "2909709e7050e4a99ef5e5e405dac4c3"
+  },
+  "admin/catalogos.php": {
+    "mtime": 1780861551.3681705,
+    "ast_hash": "8e5210a371eb1c6c6b611e047333ea08",
+    "semantic_hash": "8e5210a371eb1c6c6b611e047333ea08"
+  },
+  "admin/equipos.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "b38dc79833ad4628e67439600b74aa53",
+    "semantic_hash": "b38dc79833ad4628e67439600b74aa53"
+  },
+  "admin/importar.php": {
+    "mtime": 1779898673.2015862,
+    "ast_hash": "65b321fc52f5674271d819359173d427",
+    "semantic_hash": "65b321fc52f5674271d819359173d427"
+  },
+  "admin/importar_descargar_ejemplo.php": {
+    "mtime": 1779898023.9671988,
+    "ast_hash": "c4b565fbacc0bc108f7d027c78a3fb86",
+    "semantic_hash": "c4b565fbacc0bc108f7d027c78a3fb86"
+  },
+  "admin/importar_historial.php": {
+    "mtime": 1779696472.0,
+    "ast_hash": "7237f2c87bb262cd5c2b6c54bf0a5f91",
+    "semantic_hash": "7237f2c87bb262cd5c2b6c54bf0a5f91"
+  },
+  "admin/plantillas.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "70e320a71cf1c31277e946df299058ed",
+    "semantic_hash": "70e320a71cf1c31277e946df299058ed"
+  },
+  "admin/reglas_asignacion.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "f875e79375f93da11171de9e792d93d3",
+    "semantic_hash": "f875e79375f93da11171de9e792d93d3"
+  },
+  "admin/sucursales.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "7d7a180f0fc9b2b4ebf1c724f1d045ee",
+    "semantic_hash": "7d7a180f0fc9b2b4ebf1c724f1d045ee"
+  },
+  "admin/usuarios.php": {
+    "mtime": 1780533246.420659,
+    "ast_hash": "82e648d99c2f5617de5d5d6ca2e1c8ac",
+    "semantic_hash": "82e648d99c2f5617de5d5d6ca2e1c8ac"
+  },
+  "almacen.php": {
+    "mtime": 1780055076.0,
+    "ast_hash": "0734311c08989a4e261f3f5ffaa1b6d1",
+    "semantic_hash": "0734311c08989a4e261f3f5ffaa1b6d1"
+  },
+  "api/anuncio_cerrar.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "f16deab8b37cb875b3c8f34d27c14e68",
+    "semantic_hash": "f16deab8b37cb875b3c8f34d27c14e68"
+  },
+  "api/avatar_subir.php": {
+    "mtime": 1779539224.0,
+    "ast_hash": "89e156be277438aaf62b0d99fc358388",
+    "semantic_hash": "89e156be277438aaf62b0d99fc358388"
+  },
+  "api/buscar_global.php": {
+    "mtime": 1779922504.0,
+    "ast_hash": "dd5d57ca98bbbb7c6984accede338efe",
+    "semantic_hash": "dd5d57ca98bbbb7c6984accede338efe"
+  },
+  "api/buscar_reincidencias.php": {
+    "mtime": 1779378245.230578,
+    "ast_hash": "2452eae0c3a4177c226b8d26a60670fc",
+    "semantic_hash": "2452eae0c3a4177c226b8d26a60670fc"
+  },
+  "api/cambiar_tema.php": {
+    "mtime": 1779697064.0,
+    "ast_hash": "7d38154c621eb047c4a76018a7ab6e88",
+    "semantic_hash": "7d38154c621eb047c4a76018a7ab6e88"
+  },
+  "api/comentario_reaccionar.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "f00d761884326e3462d1dcdd35c7bbe3",
+    "semantic_hash": "f00d761884326e3462d1dcdd35c7bbe3"
+  },
+  "api/equipo_foto_eliminar.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "cba964be6795a2090efdd267d8aebd84",
+    "semantic_hash": "cba964be6795a2090efdd267d8aebd84"
+  },
+  "api/equipo_foto_portada.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "995aaef25e6e107ae002b3e9428b9736",
+    "semantic_hash": "995aaef25e6e107ae002b3e9428b9736"
+  },
+  "api/equipo_fotos_subir.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "a6725b80b8e2680fa78642a953b5e5f8",
+    "semantic_hash": "a6725b80b8e2680fa78642a953b5e5f8"
+  },
+  "api/equipo_posicion.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "6944b69fcd259527f3db0db2ace6406a",
+    "semantic_hash": "6944b69fcd259527f3db0db2ace6406a"
+  },
+  "api/equipo_transferir.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "3814aaa64e9abc60da033ff0d5170c2b",
+    "semantic_hash": "3814aaa64e9abc60da033ff0d5170c2b"
+  },
+  "api/equipos_de_sucursal.php": {
+    "mtime": 1779378245.215578,
+    "ast_hash": "ccef3bc933df1583e6df41eef98fd7b9",
+    "semantic_hash": "ccef3bc933df1583e6df41eef98fd7b9"
+  },
+  "api/mantenimiento_convertir_incidencia.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "b148cf10a0b1476dfdf479b521952681",
+    "semantic_hash": "b148cf10a0b1476dfdf479b521952681"
+  },
+  "api/notificacion_marcar_leida.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "e108c46c6148be6fda4cce71b7eb8bf4",
+    "semantic_hash": "e108c46c6148be6fda4cce71b7eb8bf4"
+  },
+  "api/notificaciones_no_leidas.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "dcf4e4976a5748e83a32c1550d779c05",
+    "semantic_hash": "dcf4e4976a5748e83a32c1550d779c05"
+  },
+  "api/plantilla_usada.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "5bf3b3ece9a01131e0c062a7807e4538",
+    "semantic_hash": "5bf3b3ece9a01131e0c062a7807e4538"
+  },
+  "api/plantillas_listar.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "5fa6c2e7cb00f90ea1ec92c384c27956",
+    "semantic_hash": "5fa6c2e7cb00f90ea1ec92c384c27956"
+  },
+  "api/preview_equipo.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "033ce0c920dbf289c0c0bc653f05ea34",
+    "semantic_hash": "033ce0c920dbf289c0c0bc653f05ea34"
+  },
+  "api/preview_folio.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "47ef9d66b0a66e02cda1714c00e42627",
+    "semantic_hash": "47ef9d66b0a66e02cda1714c00e42627"
+  },
+  "api/proveedores_listar.php": {
+    "mtime": 1779537736.0,
+    "ast_hash": "1ca6e1695729bfb62cbc3f76858ae179",
+    "semantic_hash": "1ca6e1695729bfb62cbc3f76858ae179"
+  },
+  "api/sparklines_dashboard.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "ad9c4cd7adc46cb6b112b583f4165940",
+    "semantic_hash": "ad9c4cd7adc46cb6b112b583f4165940"
+  },
+  "api/sucursal_plano_subir.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "ac1d4363d01943ee88ba73c60f4033a3",
+    "semantic_hash": "ac1d4363d01943ee88ba73c60f4033a3"
+  },
+  "api/sugerencias_incidencia.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "3bea1e004d0c6134cfe6e77b91ad457e",
+    "semantic_hash": "3bea1e004d0c6134cfe6e77b91ad457e"
+  },
+  "api/sugerir_categoria.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "4051acf4ae3cd01b96cb6e20fa9e6230",
+    "semantic_hash": "4051acf4ae3cd01b96cb6e20fa9e6230"
+  },
+  "api/tecnico_menos_cargado.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "1dd70f387e0b52f2f9f7bfc66031874e",
+    "semantic_hash": "1dd70f387e0b52f2f9f7bfc66031874e"
+  },
+  "api/usuarios_buscar.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "b55f03300cc8a5f364072e5e790ce498",
+    "semantic_hash": "b55f03300cc8a5f364072e5e790ce498"
+  },
+  "api/vault_favorito.php": {
+    "mtime": 1779922504.0,
+    "ast_hash": "643f01500eccebb7d32d6a8f0e6f5288",
+    "semantic_hash": "643f01500eccebb7d32d6a8f0e6f5288"
+  },
+  "base_conocimiento.php": {
+    "mtime": 1780969062.4499693,
+    "ast_hash": "9c10ceb895b920a420254159562c343f",
+    "semantic_hash": "9c10ceb895b920a420254159562c343f"
+  },
+  "bitacora.php": {
+    "mtime": 1781569409.854889,
+    "ast_hash": "803fb1b503968011c6d7e399a4506a4f",
+    "semantic_hash": "803fb1b503968011c6d7e399a4506a4f"
+  },
+  "config/admin_helpers.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "050d624fb328d820a21f3848cf786f13",
+    "semantic_hash": "050d624fb328d820a21f3848cf786f13"
+  },
+  "config/auth.php": {
+    "mtime": 1779697064.0,
+    "ast_hash": "336571c4cd3b4389f33c1d50b8df89f7",
+    "semantic_hash": "336571c4cd3b4389f33c1d50b8df89f7"
+  },
+  "config/backups_helpers.php": {
+    "mtime": 1780435150.063189,
+    "ast_hash": "eee2756efae89a20182973ddfa01fa86",
+    "semantic_hash": "eee2756efae89a20182973ddfa01fa86"
+  },
+  "config/componentes_helpers.php": {
+    "mtime": 1780012021.8111641,
+    "ast_hash": "cf2a6eed2f3f22fb70b5748ab2749a5d",
+    "semantic_hash": "cf2a6eed2f3f22fb70b5748ab2749a5d"
+  },
+  "config/comunicacion_helpers.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "4cc165d17cd0fda651008399f0432116",
+    "semantic_hash": "4cc165d17cd0fda651008399f0432116"
+  },
+  "config/db.php": {
+    "mtime": 1780590871.576538,
+    "ast_hash": "5a56f3d9bcc172e049419d941fbeb637",
+    "semantic_hash": "5a56f3d9bcc172e049419d941fbeb637"
+  },
+  "config/equipos_helpers.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "15e53573330bc0b988cdc6f5b72b04ee",
+    "semantic_hash": "15e53573330bc0b988cdc6f5b72b04ee"
+  },
+  "config/footer.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "08207ca33c13fff3ee05b2a3a9ed7479",
+    "semantic_hash": "08207ca33c13fff3ee05b2a3a9ed7479"
+  },
+  "config/header.php": {
+    "mtime": 1780863360.1952872,
+    "ast_hash": "7e817d0264eb0361d1b13a1f60cc0a4d",
+    "semantic_hash": "7e817d0264eb0361d1b13a1f60cc0a4d"
+  },
+  "config/helpers.php": {
+    "mtime": 1779749242.0,
+    "ast_hash": "97e99a602689e61d858235f47957fa71",
+    "semantic_hash": "97e99a602689e61d858235f47957fa71"
+  },
+  "config/herramientas_helpers.php": {
+    "mtime": 1780101950.0,
+    "ast_hash": "bec3c4cdbecf21fb51273435d8cd0a22",
+    "semantic_hash": "bec3c4cdbecf21fb51273435d8cd0a22"
+  },
+  "config/importacion_helpers.php": {
+    "mtime": 1779696472.0,
+    "ast_hash": "9a4dbc957383f4920cf8e181e07654a7",
+    "semantic_hash": "9a4dbc957383f4920cf8e181e07654a7"
+  },
+  "config/incidencia_costos_helpers.php": {
+    "mtime": 1780542395.706622,
+    "ast_hash": "9e4154e99bc11b49a49a6f438069c62c",
+    "semantic_hash": "9e4154e99bc11b49a49a6f438069c62c"
+  },
+  "config/incidencia_refacciones_helpers.php": {
+    "mtime": 1780028684.9391544,
+    "ast_hash": "a5aeaea41b547778a3ff8041d3a82630",
+    "semantic_hash": "a5aeaea41b547778a3ff8041d3a82630"
+  },
+  "config/incidencias_helpers.php": {
+    "mtime": 1781197300.8146517,
+    "ast_hash": "058873446fcc20e366e4938bae6cc876",
+    "semantic_hash": "058873446fcc20e366e4938bae6cc876"
+  },
+  "config/inteligencia_helpers.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "72c2784dd74e89e455c0bb85ea83b08f",
+    "semantic_hash": "72c2784dd74e89e455c0bb85ea83b08f"
+  },
+  "config/mantenimientos_helpers.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "49b6e2d7caa1ef0ae4adf8bbfc468ebd",
+    "semantic_hash": "49b6e2d7caa1ef0ae4adf8bbfc468ebd"
+  },
+  "config/mapa_helpers.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "1aedea64d670402deb6d5f5cc02a06e4",
+    "semantic_hash": "1aedea64d670402deb6d5f5cc02a06e4"
+  },
+  "config/notificaciones_helpers.php": {
+    "mtime": 1779749242.0,
+    "ast_hash": "1bcce8a3264a084a4d40eac95306531d",
+    "semantic_hash": "1bcce8a3264a084a4d40eac95306531d"
+  },
+  "config/organizacion_helpers.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "bbddba9eec249ec2664f3ba326b958a6",
+    "semantic_hash": "bbddba9eec249ec2664f3ba326b958a6"
+  },
+  "config/refacciones_helpers.php": {
+    "mtime": 1780012012.2091062,
+    "ast_hash": "bc3d828901aa28cbccc21e237c06d9ec",
+    "semantic_hash": "bc3d828901aa28cbccc21e237c06d9ec"
+  },
+  "config/reportes_helpers.php": {
+    "mtime": 1779399079.3363414,
+    "ast_hash": "a8fbe114e3f50958558f75aff2564ac9",
+    "semantic_hash": "a8fbe114e3f50958558f75aff2564ac9"
+  },
+  "config/sesiones_helpers.php": {
+    "mtime": 1779588328.0,
+    "ast_hash": "89b7a794bcfd469ce6a8c89300fec5ac",
+    "semantic_hash": "89b7a794bcfd469ce6a8c89300fec5ac"
+  },
+  "config/vault_helpers.php": {
+    "mtime": 1779827834.4125502,
+    "ast_hash": "d865998856d404f87f7697dbe2da4f33",
+    "semantic_hash": "d865998856d404f87f7697dbe2da4f33"
+  },
+  "cron/archivar_automatico.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "4bd5ddd2551755db292d3f6a835772d0",
+    "semantic_hash": "4bd5ddd2551755db292d3f6a835772d0"
+  },
+  "cron/backup_diario.php": {
+    "mtime": 1779588916.0,
+    "ast_hash": "2bd4fa0ac71fe98749a07ebea4e43021",
+    "semantic_hash": "2bd4fa0ac71fe98749a07ebea4e43021"
+  },
+  "cron/enviar_recordatorios.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "3238d64fcf39db798d01d3495286e30d",
+    "semantic_hash": "3238d64fcf39db798d01d3495286e30d"
+  },
+  "cron/notificar_mantenimientos.php": {
+    "mtime": 1779749242.0,
+    "ast_hash": "6e97975e17252356bcdf10bdc4d1b65b",
+    "semantic_hash": "6e97975e17252356bcdf10bdc4d1b65b"
+  },
+  "dashboard.php": {
+    "mtime": 1780864891.8243008,
+    "ast_hash": "3c98c8c5183a24d6e4e573b2491123ae",
+    "semantic_hash": "3c98c8c5183a24d6e4e573b2491123ae"
+  },
+  "diagnostico_logout.php": {
+    "mtime": 1779326894.8380148,
+    "ast_hash": "e6c997c62d157f1e46b031b37ddcdfa1",
+    "semantic_hash": "e6c997c62d157f1e46b031b37ddcdfa1"
+  },
+  "equipo_componentes.php": {
+    "mtime": 1780010230.685569,
+    "ast_hash": "940f9cc2833b8b2c59d4a4e6f1918cd2",
+    "semantic_hash": "940f9cc2833b8b2c59d4a4e6f1918cd2"
+  },
+  "equipo_refacciones.php": {
+    "mtime": 1780028706.34912,
+    "ast_hash": "0ab5dd6dde08975c6402ee2bfe243b97",
+    "semantic_hash": "0ab5dd6dde08975c6402ee2bfe243b97"
+  },
+  "equipo_ver.php": {
+    "mtime": 1780055076.0,
+    "ast_hash": "ab27d343512b27d0b78a60b590ef3e89",
+    "semantic_hash": "ab27d343512b27d0b78a60b590ef3e89"
+  },
+  "herramienta_ver.php": {
+    "mtime": 1780101950.0,
+    "ast_hash": "96d6b937be60d7df788c2c679044cb2a",
+    "semantic_hash": "96d6b937be60d7df788c2c679044cb2a"
+  },
+  "herramientas.php": {
+    "mtime": 1780101950.0,
+    "ast_hash": "1f78d73c864352c7c75d73b699d2085a",
+    "semantic_hash": "1f78d73c864352c7c75d73b699d2085a"
+  },
+  "herramientas_prestamo.php": {
+    "mtime": 1780101950.0,
+    "ast_hash": "a040fa1387d6f124d341d7cc90455c32",
+    "semantic_hash": "a040fa1387d6f124d341d7cc90455c32"
+  },
+  "incidencia_editar.php": {
+    "mtime": 1780543023.6475625,
+    "ast_hash": "298bf16430a06a5efde82f40363df8a6",
+    "semantic_hash": "298bf16430a06a5efde82f40363df8a6"
+  },
+  "incidencia_nueva.php": {
+    "mtime": 1780543009.7210603,
+    "ast_hash": "0406ae0f451ea5bd1770b3596bec5909",
+    "semantic_hash": "0406ae0f451ea5bd1770b3596bec5909"
+  },
+  "incidencia_refacciones.php": {
+    "mtime": 1780028696.457784,
+    "ast_hash": "b9712f8ef6637cef2135f0d35812b22f",
+    "semantic_hash": "b9712f8ef6637cef2135f0d35812b22f"
+  },
+  "incidencia_ver.php": {
+    "mtime": 1780543609.8050807,
+    "ast_hash": "fd8f7fc64b429cd91dd2094f5701c162",
+    "semantic_hash": "fd8f7fc64b429cd91dd2094f5701c162"
+  },
+  "login.php": {
+    "mtime": 1780356755.3191602,
+    "ast_hash": "6ddfe3b00eb6d6ea49e7c4573669accd",
+    "semantic_hash": "6ddfe3b00eb6d6ea49e7c4573669accd"
+  },
+  "logout.php": {
+    "mtime": 1779310867.0,
+    "ast_hash": "dbbeefd9fdb64d1a1b49fc1df852b674",
+    "semantic_hash": "dbbeefd9fdb64d1a1b49fc1df852b674"
+  },
+  "mantenimiento_editar.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "5ecd9667b4688337f154590211af9e20",
+    "semantic_hash": "5ecd9667b4688337f154590211af9e20"
+  },
+  "mantenimiento_nuevo.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "9be826381ba965c25712706b40f4ed66",
+    "semantic_hash": "9be826381ba965c25712706b40f4ed66"
+  },
+  "mantenimiento_ver.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "bfaa386a83a095944001799712810f50",
+    "semantic_hash": "bfaa386a83a095944001799712810f50"
+  },
+  "mantenimientos.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "3cb768817837490ad716e1bfb9c85b4a",
+    "semantic_hash": "3cb768817837490ad716e1bfb9c85b4a"
+  },
+  "mapa_sucursal.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "fdd6ae9c830b30f38b698751ee1c8645",
+    "semantic_hash": "fdd6ae9c830b30f38b698751ee1c8645"
+  },
+  "mi_perfil.php": {
+    "mtime": 1779539224.0,
+    "ast_hash": "7bfa93a24dff667a91f28677d2d8e9aa",
+    "semantic_hash": "7bfa93a24dff667a91f28677d2d8e9aa"
+  },
+  "notificaciones.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "fd13469736899b2e33068b3d6f0ecd88",
+    "semantic_hash": "fd13469736899b2e33068b3d6f0ecd88"
+  },
+  "proveedor_ver.php": {
+    "mtime": 1781130263.2431588,
+    "ast_hash": "30f06ccec6d547d8516301f91035fd70",
+    "semantic_hash": "30f06ccec6d547d8516301f91035fd70"
+  },
+  "proveedores.php": {
+    "mtime": 1781130657.547671,
+    "ast_hash": "bd472a718f0a349a96ee3173fca022ed",
+    "semantic_hash": "bd472a718f0a349a96ee3173fca022ed"
+  },
+  "recordatorios.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "85de7e056ceb82329974a72ae45ea7d5",
+    "semantic_hash": "85de7e056ceb82329974a72ae45ea7d5"
+  },
+  "refaccion_ver.php": {
+    "mtime": 1780036626.0,
+    "ast_hash": "647cca0df89ae272144a3678275fa331",
+    "semantic_hash": "647cca0df89ae272144a3678275fa331"
+  },
+  "refacciones.php": {
+    "mtime": 1780036626.0,
+    "ast_hash": "f2de1d1111edacd9b06ee64dce00f59f",
+    "semantic_hash": "f2de1d1111edacd9b06ee64dce00f59f"
+  },
+  "refacciones_movimientos.php": {
+    "mtime": 1780036626.0,
+    "ast_hash": "bdf3460b011b00ef8eb9e511551dd830",
+    "semantic_hash": "bdf3460b011b00ef8eb9e511551dd830"
+  },
+  "reportes/incidencia_imprimir.php": {
+    "mtime": 1780543637.8767526,
+    "ast_hash": "37cdbcec811648fc845c049b5e46e009",
+    "semantic_hash": "37cdbcec811648fc845c049b5e46e009"
+  },
+  "reportes/reporte_costos.php": {
+    "mtime": 1780528352.712899,
+    "ast_hash": "bed0b61c9229f62e7d75134c501134e2",
+    "semantic_hash": "bed0b61c9229f62e7d75134c501134e2"
+  },
+  "reportes/reporte_mensual.php": {
+    "mtime": 1779399079.362341,
+    "ast_hash": "d1200450eaff6a250823cd3f666ee400",
+    "semantic_hash": "d1200450eaff6a250823cd3f666ee400"
+  },
+  "reportes/reporte_reincidencias.php": {
+    "mtime": 1779399079.373345,
+    "ast_hash": "653b16933965430640dd0ba6daa2476b",
+    "semantic_hash": "653b16933965430640dd0ba6daa2476b"
+  },
+  "reportes/reporte_sla.php": {
+    "mtime": 1779399079.3948615,
+    "ast_hash": "1e252af267f645e9d3826be6980e9f8b",
+    "semantic_hash": "1e252af267f645e9d3826be6980e9f8b"
+  },
+  "reportes/reporte_tecnicos.php": {
+    "mtime": 1780544062.1188369,
+    "ast_hash": "f4760c66e434c7375a11c21e3a73fc48",
+    "semantic_hash": "f4760c66e434c7375a11c21e3a73fc48"
+  },
+  "reportes/reportes.php": {
+    "mtime": 1780528362.5032654,
+    "ast_hash": "70a9a9d7d0f6edef190215432f542f20",
+    "semantic_hash": "70a9a9d7d0f6edef190215432f542f20"
+  },
+  "reportes_mantenimiento.php": {
+    "mtime": 1780864873.662397,
+    "ast_hash": "14756dc61af70e41ffc864e072f6312b",
+    "semantic_hash": "14756dc61af70e41ffc864e072f6312b"
+  },
+  "root/carnes_bacal.sql": {
+    "mtime": 1779310065.5315099,
+    "ast_hash": "b5f709e7d37b227f04b3ab1b5e5563d5",
+    "semantic_hash": "b5f709e7d37b227f04b3ab1b5e5563d5"
+  },
+  "root/generar_datos_demo.php": {
+    "mtime": 1779315106.0,
+    "ast_hash": "329d1d81734b56a84cd0fe9aa8911a13",
+    "semantic_hash": "329d1d81734b56a84cd0fe9aa8911a13"
+  },
+  "root/setup.php": {
+    "mtime": 1779310468.7401226,
+    "ast_hash": "e094211f22a9bcf263f03a7f459a4882",
+    "semantic_hash": "e094211f22a9bcf263f03a7f459a4882"
+  },
+  "sql/mantenimiento_bacal_B1.sql": {
+    "mtime": 1780009878.3279994,
+    "ast_hash": "8809a972e0b59d8429b11d970ae428bd",
+    "semantic_hash": "8809a972e0b59d8429b11d970ae428bd"
+  },
+  "sql/mantenimiento_bacal_B2.sql": {
+    "mtime": 1780010140.6880572,
+    "ast_hash": "ea5a02ec801c5f5f810402fc7c07e455",
+    "semantic_hash": "ea5a02ec801c5f5f810402fc7c07e455"
+  },
+  "sql/mantenimiento_bacal_B3.sql": {
+    "mtime": 1780036626.0,
+    "ast_hash": "4ccf1591db9150e54ac092fc5b088dcb",
+    "semantic_hash": "4ccf1591db9150e54ac092fc5b088dcb"
+  },
+  "sql/mantenimiento_bacal_B4.sql": {
+    "mtime": 1780028652.442649,
+    "ast_hash": "4cd2d04e110e0bac242f8a02821e011e",
+    "semantic_hash": "4cd2d04e110e0bac242f8a02821e011e"
+  },
+  "sql/mantenimiento_bacal_B5.sql": {
+    "mtime": 1780030640.092493,
+    "ast_hash": "9130ca0aa9d12c30be42a62a08757497",
+    "semantic_hash": "9130ca0aa9d12c30be42a62a08757497"
+  },
+  "sql/migracion_areas.sql": {
+    "mtime": 1780545560.9831216,
+    "ast_hash": "f76e858d968c009142dde435fb49bfbb",
+    "semantic_hash": "f76e858d968c009142dde435fb49bfbb"
+  },
+  "sql/migracion_bacal.sql": {
+    "mtime": 1780544467.7419865,
+    "ast_hash": "a265c7856254ada5bcbaec857c8d16a3",
+    "semantic_hash": "a265c7856254ada5bcbaec857c8d16a3"
+  },
+  "sql/migracion_equipos_area.sql": {
+    "mtime": 1780546010.401826,
+    "ast_hash": "a89cd7abf7f7536b9fc7a052890247aa",
+    "semantic_hash": "a89cd7abf7f7536b9fc7a052890247aa"
+  },
+  "vault.php": {
+    "mtime": 1779827847.063741,
+    "ast_hash": "c18663449c3eff7549625277059322da",
+    "semantic_hash": "c18663449c3eff7549625277059322da"
+  },
+  "vault_entrada.php": {
+    "mtime": 1779922504.0,
+    "ast_hash": "e70993c684609eb10c994ae519f5e9a0",
+    "semantic_hash": "e70993c684609eb10c994ae519f5e9a0"
+  },
+  "config/medidores_helpers.php": {
+    "mtime": 1780863935.11195,
+    "ast_hash": "75aad7bf8152209ca0d369f52b15d076",
+    "semantic_hash": "75aad7bf8152209ca0d369f52b15d076"
+  },
+  "lectura_nueva.php": {
+    "mtime": 1780863971.8245113,
+    "ast_hash": "0ffc6ec46256e2d5b3d7c42f4924517f",
+    "semantic_hash": "0ffc6ec46256e2d5b3d7c42f4924517f"
+  },
+  "lecturas_captura.php": {
+    "mtime": 1780864013.38555,
+    "ast_hash": "16d130d867bc1aea804ab66eaa348ed0",
+    "semantic_hash": "16d130d867bc1aea804ab66eaa348ed0"
+  },
+  "medidor_ver.php": {
+    "mtime": 1780863960.4756682,
+    "ast_hash": "2e4411d7617c3e1f81794ea1dd02b00d",
+    "semantic_hash": "2e4411d7617c3e1f81794ea1dd02b00d"
+  },
+  "medidores.php": {
+    "mtime": 1780863947.3670382,
+    "ast_hash": "30bfa7597666085331dd58749bbb4f92",
+    "semantic_hash": "30bfa7597666085331dd58749bbb4f92"
+  }
+}

@@ -221,6 +221,26 @@ function color_avatar(?string $texto): string {
  * @param string $clases_extra Clases extra para el contenedor
  * @return string HTML del avatar
  */
+/**
+ * Lee una preferencia de UI del usuario en sesión.
+ * Si la clave no existe devuelve $defecto (null por omisión).
+ *
+ * Para activar una preferencia desde la BD:
+ *   UPDATE usuarios SET preferencias = '{"sucursal_selector":"radio"}' WHERE id = X;
+ */
+function usuario_preferencia(string $clave, mixed $defecto = null): mixed {
+    $prefs = usuario_actual()['preferencias'] ?? [];
+    return $prefs[$clave] ?? $defecto;
+}
+
+/**
+ * ¿El usuario prefiere el selector de sucursal como radio buttons?
+ * Se activa con: preferencias → {"sucursal_selector":"radio"}
+ */
+function usuario_prefiere_radio_sucursal(): bool {
+    return usuario_preferencia('sucursal_selector') === 'radio';
+}
+
 function render_avatar(?array $usuario, string $tamano = 'w-8 h-8', string $clases_extra = ''): string {
     if (!$usuario) {
         return '<div class="' . $tamano . ' rounded-full bg-zinc-200 ' . $clases_extra . '"></div>';

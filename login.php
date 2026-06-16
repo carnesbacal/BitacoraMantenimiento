@@ -66,7 +66,7 @@ if (es_post()) {
                         display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'],
                     },
                     colors: {
-                        bacal: { 50:'#FEF2F2',100:'#FEE2E2',600:'#DC2626',700:'#C8102E',800:'#991B1B',900:'#7F1D1D' },
+                        bacal: { 50:'#FFFAF7',100:'#FFE8D6',600:'#E94E1B',700:'#E94E1B',800:'#1F1F1F',900:'#0A0A0A' },
                         gold:  { 400:'#F2C94C', 500:'#E8B923', 600:'#D4A017' }
                     }
                 }
@@ -82,7 +82,7 @@ if (es_post()) {
             background:
                 radial-gradient(circle at 20% 20%, rgba(232,185,35,0.20) 0%, transparent 40%),
                 radial-gradient(circle at 80% 80%, rgba(255,255,255,0.10) 0%, transparent 50%),
-                linear-gradient(135deg, #7F1D1D 0%, #C8102E 50%, #991B1B 100%);
+                linear-gradient(135deg, #0A0A0A 0%, #E94E1B 50%, #1F1F1F 100%);
         }
 
         /* Patrón sutil de textura */
@@ -111,18 +111,18 @@ if (es_post()) {
             transition: all 0.15s ease;
         }
         .input-form:focus {
-            border-color: #C8102E;
-            box-shadow: 0 0 0 3px rgba(200,16,46,0.10);
+            border-color: #E94E1B;
+            box-shadow: 0 0 0 3px rgba(233,78,27,0.10);
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #C8102E 0%, #991B1B 100%);
+            background: linear-gradient(135deg, #E94E1B 0%, #1F1F1F 100%);
             transition: all 0.2s ease;
         }
         .btn-primary:hover {
-            background: linear-gradient(135deg, #991B1B 0%, #7F1D1D 100%);
+            background: linear-gradient(135deg, #E94E1B 0%, #0A0A0A 100%);
             transform: translateY(-1px);
-            box-shadow: 0 8px 20px -8px rgba(200,16,46,0.6);
+            box-shadow: 0 8px 20px -8px rgba(233,78,27,0.6);
         }
         .btn-primary:active { transform: translateY(0); }
 
@@ -167,11 +167,11 @@ if (es_post()) {
                 </div>
                 <h2 class="font-display text-5xl xl:text-6xl font-extrabold leading-[1.05]">
                     Control total<br>
-                    de <span class="text-gold-400">sistemas</span><br>
+                    de <span class="text-gold-400">Mantenimiento</span><br>
                     en un solo lugar.
                 </h2>
                 <p class="text-white/70 text-base max-w-md leading-relaxed">
-                    Registra, asigna y resuelve incidencias de TI con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
+                    Registra, asigna y resuelve incidencias de mantenimiento con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
                 </p>
             </div>
 
@@ -254,7 +254,7 @@ if (es_post()) {
             <!-- Pie -->
             <div class="mt-8 pt-6 border-t border-zinc-200 text-center">
                 <div class="text-xs text-zinc-500">
-                    ¿Problemas para acceder? Contacta al área de Sistemas.
+                    ¿Problemas para acceder? Contacta al área de Mantenimiento.
                 </div>
             </div>
         </div>

@@ -17,6 +17,7 @@ require_once __DIR__ . '/config/helpers.php';
 require_once __DIR__ . '/config/incidencias_helpers.php';
 require_once __DIR__ . '/config/notificaciones_helpers.php';
 require_once __DIR__ . '/config/inteligencia_helpers.php';
+require_once __DIR__ . '/config/incidencia_costos_helpers.php';
 
 requerir_login();
 
@@ -39,10 +40,14 @@ $tipos       = cat_tipos_trabajo();
 $severidades = cat_severidades();
 $origenes    = cat_origenes();
 $tecnicos    = cat_tecnicos();
+$proveedores = listar_proveedores_activos();
 
 // Estado inicial
 $estado_inicial = db_one("SELECT id FROM estados WHERE es_inicial=1 AND activo=1 LIMIT 1");
 $estado_inicial_id = $estado_inicial ? (int) $estado_inicial['id'] : null;
+// Estado "Completada" (es_final) para auto-completar al registrar solución
+$estado_completada = db_one("SELECT id FROM estados WHERE nombre LIKE 'Complet%' AND es_final=1 AND activo=1 ORDER BY orden LIMIT 1");
+$estado_completada_id = $estado_completada ? (int) $estado_completada['id'] : null;
 
 // ----------------------------------------------------------------------------
 // Valores por defecto: ya sea de duplicar o vacíos
@@ -59,6 +64,14 @@ $default = [
     'es_reincidencia' => 0, 'incidencia_padre_id' => '',
     'fecha_evento' => date('Y-m-d\TH:i'),
     'causa_raiz' => '', 'solucion' => '', 'recomendaciones' => '',
+    // Proveedor y costos
+    'proveedor_modo' => 'interno',  // interno | catalogo | otro
+    'proveedor_escalado_id' => '',
+    'proveedor_externo_info' => '',
+    'prov_nuevo_nombre' => '', 'prov_nuevo_servicio' => '', 'prov_nuevo_telefono' => '',
+    'costo_mano_obra' => '', 'costo_materiales_proveedor' => '', 'costo_notas' => '',
+    'costo_materiales_comprados' => '',
+    'horas_trabajadas' => '',
 ];
 
 $duplicar_de = (int) input('duplicar_de', 0);
@@ -160,6 +173,15 @@ if (es_post()) {
                     $fecha_atencion = date('Y-m-d H:i:s');
                 }
 
+                // Auto-completar: si registró solución, marcar como Completada
+                $tiene_solucion = trim((string) $valores['solucion']) !== '';
+                $estado_a_usar = ($tiene_solucion && $estado_completada_id) ? $estado_completada_id : $estado_inicial_id;
+                $fecha_resolucion = $tiene_solucion ? date('Y-m-d H:i:s') : null;
+                $resuelto_por = $tiene_solucion ? (int) $u['id'] : null;
+                if ($tiene_solucion && !$fecha_atencion) {
+                    $fecha_atencion = date('Y-m-d H:i:s');
+                }
+
                 // Insertar
                 db_exec(
                     "INSERT INTO incidencias
@@ -167,17 +189,17 @@ if (es_post()) {
                       tipo_trabajo_id, severidad_id, estado_id, origen_reporte_id, equipo_id,
                       reportado_por_id, reportante_nombre, reportante_puesto, asignado_a_id,
                       es_reincidencia, incidencia_padre_id,
-                      fecha_evento, fecha_atencion, fecha_limite_sla,
+                      fecha_evento, fecha_atencion, fecha_limite_sla, fecha_resolucion,
                       causa_raiz, solucion, recomendaciones,
-                      creado_por_id)
+                      resuelto_por_id, creado_por_id)
                      VALUES
                      (:folio, :tit, :desc, :sid, :aid, :cid, :scid,
                       :ttid, :sevid, :estid, :origen, :eqid,
                       :rep, :repn, :repp, :asig,
                       :reinc, :padre,
-                      :fe, :fa, :sla,
+                      :fe, :fa, :sla, :fr,
                       :cr, :sol, :rec,
-                      :crid)",
+                      :resby, :crid)",
                     [
                         'folio' => $folio,
                         'tit' => trim((string) $valores['titulo']),
@@ -188,7 +210,7 @@ if (es_post()) {
                         'scid' => $valores['subcategoria_id'] ?: null,
                         'ttid' => $valores['tipo_trabajo_id'] ?: null,
                         'sevid' => $valores['severidad_id'],
-                        'estid' => $estado_inicial_id,
+                        'estid' => $estado_a_usar,
                         'origen' => $valores['origen_reporte_id'] ?: null,
                         'eqid' => $valores['equipo_id'] ?: null,
                         'rep' => $u['id'],
@@ -200,13 +222,43 @@ if (es_post()) {
                         'fe' => date('Y-m-d H:i:s', strtotime($valores['fecha_evento'])),
                         'fa' => $fecha_atencion,
                         'sla' => $fecha_limite_sla,
+                        'fr' => $fecha_resolucion,
                         'cr' => trim((string) $valores['causa_raiz']) ?: null,
                         'sol' => trim((string) $valores['solucion']) ?: null,
                         'rec' => trim((string) $valores['recomendaciones']) ?: null,
+                        'resby' => $resuelto_por,
                         'crid' => $u['id'],
                     ]
                 );
                 $incidencia_id = db_last_id();
+
+                // === Proveedor y costos ===
+                $modo = (string) $valores['proveedor_modo'];
+                $prov_id = null;
+                $prov_info = null;
+                if ($modo === 'catalogo' && $valores['proveedor_escalado_id']) {
+                    $prov_id = (int) $valores['proveedor_escalado_id'];
+                } elseif ($modo === 'otro') {
+                    // ¿Capturó nombre para alta rápida o solo info libre?
+                    if (trim((string) $valores['prov_nuevo_nombre']) !== '') {
+                        $prov_id = crear_proveedor_rapido([
+                            'nombre' => $valores['prov_nuevo_nombre'],
+                            'servicio' => $valores['prov_nuevo_servicio'],
+                            'telefono' => $valores['prov_nuevo_telefono'],
+                        ], (int) $u['id']);
+                    } else {
+                        $prov_info = trim((string) $valores['proveedor_externo_info']) ?: null;
+                    }
+                }
+                guardar_costos_incidencia($incidencia_id, [
+                    'proveedor_escalado_id' => $prov_id,
+                    'proveedor_externo_info' => $prov_info,
+                    'costo_mano_obra' => $modo === 'interno' ? null : $valores['costo_mano_obra'],
+                    'costo_materiales_proveedor' => $modo === 'interno' ? null : $valores['costo_materiales_proveedor'],
+                    'costo_notas' => $valores['costo_notas'],
+                    'horas_trabajadas' => $modo === 'interno' ? $valores['horas_trabajadas'] : null,
+                    'costo_materiales_comprados' => $modo === 'interno' ? $valores['costo_materiales_comprados'] : null,
+                ]);
 
                 // Registrar tiempos
                 recalcular_tiempos_incidencia($incidencia_id);
@@ -720,7 +772,164 @@ require_once __DIR__ . '/config/header.php';
             </div>
         </div>
 
-        <!-- Sección 5: Resolución (opcional al crear) -->
+        <!-- Sección 5.5: Proveedor y costos -->
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6"
+             x-data="{
+                 modo: '<?= e((string) $valores['proveedor_modo']) ?>',
+                 get esExterno() { return this.modo === 'catalogo' || this.modo === 'otro'; }
+             }">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
+                <i data-lucide="hand-coins" class="w-4 h-4 text-bacal-700"></i>
+                ¿Quién atendió? · Costos
+                <span class="text-xs font-normal text-zinc-500">(opcional)</span>
+            </h3>
+            <p class="text-xs text-zinc-500 mb-4">Si lo resolvió personal interno, deja en "Interno". Si fue un proveedor, registra quién y cuánto costó.</p>
+
+            <!-- Selector de modo -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                <label class="relative flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors"
+                       :class="modo === 'interno' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                    <input type="radio" name="proveedor_modo" value="interno" x-model="modo" class="text-bacal-700">
+                    <div>
+                        <div class="text-sm font-semibold text-zinc-900">Interno</div>
+                        <div class="text-[10px] text-zinc-500">Técnicos propios</div>
+                    </div>
+                </label>
+                <label class="relative flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors"
+                       :class="modo === 'catalogo' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                    <input type="radio" name="proveedor_modo" value="catalogo" x-model="modo" class="text-bacal-700">
+                    <div>
+                        <div class="text-sm font-semibold text-zinc-900">Proveedor</div>
+                        <div class="text-[10px] text-zinc-500">Del catálogo</div>
+                    </div>
+                </label>
+                <label class="relative flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors"
+                       :class="modo === 'otro' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                    <input type="radio" name="proveedor_modo" value="otro" x-model="modo" class="text-bacal-700">
+                    <div>
+                        <div class="text-sm font-semibold text-zinc-900">Otro</div>
+                        <div class="text-[10px] text-zinc-500">Escribir / dar de alta</div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Interno: horas + materiales comprados -->
+            <div x-show="modo === 'interno'" x-collapse class="mb-4 space-y-3">
+                <div class="bg-zinc-50 rounded-lg p-3">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide flex items-center gap-1.5">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-bacal-700"></i>
+                        Horas de trabajo del técnico
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" name="horas_trabajadas" min="0" step="0.25"
+                               value="<?= e((string) $valores['horas_trabajadas']) ?>"
+                               placeholder="0"
+                               class="w-32 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        <span class="text-xs text-zinc-500">horas</span>
+                    </div>
+                    <p class="text-[10px] text-zinc-500 mt-1">Tiempo real que dedicó el técnico interno a esta actividad. (Distinto del tiempo de resolución, que mide el SLA.)</p>
+                </div>
+
+                <div class="bg-zinc-50 rounded-lg p-3">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide flex items-center gap-1.5">
+                        <i data-lucide="shopping-cart" class="w-3.5 h-3.5 text-bacal-700"></i>
+                        Materiales comprados
+                    </label>
+                    <div class="relative w-48">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                        <input type="number" name="costo_materiales_comprados" min="0" step="0.01"
+                               value="<?= e((string) $valores['costo_materiales_comprados']) ?>"
+                               placeholder="0.00"
+                               class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    </div>
+                    <p class="text-[10px] text-zinc-500 mt-1">Material comprado especialmente para esta incidencia que NO estaba en almacén (ej. fuiste a la ferretería).</p>
+                </div>
+            </div>
+
+            <!-- Catálogo: select de proveedor -->
+            <div x-show="modo === 'catalogo'" x-collapse class="mb-4">
+                <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Proveedor registrado</label>
+                <select name="proveedor_escalado_id"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">— Selecciona un proveedor —</option>
+                    <?php foreach ($proveedores as $p): ?>
+                    <option value="<?= $p['id'] ?>" <?= (int) $valores['proveedor_escalado_id'] === (int) $p['id'] ? 'selected' : '' ?>>
+                        <?= e($p['nombre']) ?><?= $p['servicio'] ? ' · ' . e($p['servicio']) : '' ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-[10px] text-zinc-500 mt-1">¿No está en la lista? Cámbialo a "Otro" para darlo de alta rápido.</p>
+            </div>
+
+            <!-- Otro: alta rápida o info libre -->
+            <div x-show="modo === 'otro'" x-collapse class="mb-4 space-y-3">
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p class="text-xs font-semibold text-amber-800 mb-2">Opción A — Dar de alta el proveedor (queda en el catálogo)</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input type="text" name="prov_nuevo_nombre" maxlength="150"
+                               value="<?= e((string) $valores['prov_nuevo_nombre']) ?>"
+                               placeholder="Nombre *"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        <input type="text" name="prov_nuevo_servicio" maxlength="255"
+                               value="<?= e((string) $valores['prov_nuevo_servicio']) ?>"
+                               placeholder="Servicio (ej. Plomería)"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        <input type="text" name="prov_nuevo_telefono" maxlength="50"
+                               value="<?= e((string) $valores['prov_nuevo_telefono']) ?>"
+                               placeholder="Teléfono"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    </div>
+                </div>
+                <div class="text-center text-[10px] text-zinc-400 uppercase tracking-wider">— o —</div>
+                <div>
+                    <p class="text-xs font-semibold text-zinc-600 mb-1">Opción B — Solo anotar (sin dar de alta)</p>
+                    <input type="text" name="proveedor_externo_info" maxlength="300"
+                           value="<?= e((string) $valores['proveedor_externo_info']) ?>"
+                           placeholder="Ej. Plomero Juan (particular), tel 664-123-4567"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <p class="text-[10px] text-zinc-500 mt-1">Si llenas el nombre arriba (Opción A) se usa ese y se ignora esto.</p>
+                </div>
+            </div>
+
+            <!-- Costos (solo si es externo) -->
+            <div x-show="esExterno" x-collapse>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-zinc-100">
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Costo mano de obra</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                            <input type="number" name="costo_mano_obra" min="0" step="0.01"
+                                   value="<?= e((string) $valores['costo_mano_obra']) ?>"
+                                   placeholder="0.00"
+                                   class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Costo materiales / piezas</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                            <input type="number" name="costo_materiales_proveedor" min="0" step="0.01"
+                                   value="<?= e((string) $valores['costo_materiales_proveedor']) ?>"
+                                   placeholder="0.00"
+                                   class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Notas del costo</label>
+                    <input type="text" name="costo_notas" maxlength="300"
+                           value="<?= e((string) $valores['costo_notas']) ?>"
+                           placeholder="Ej. Incluye IVA, factura A-123, garantía 6 meses"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-2 flex items-center gap-1">
+                    <i data-lucide="info" class="w-3 h-3"></i>
+                    Las refacciones de stock interno se suman aparte automáticamente desde la pestaña de refacciones.
+                </p>
+            </div>
+        </div>
+
+        <!-- Sección 5.7: Resolución (opcional al crear) -->
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6"
              x-data="{ abierto: <?= !empty($valores['solucion']) ? 'true' : 'false' ?> }">
             <button type="button" @click="abierto = !abierto"
@@ -737,6 +946,10 @@ require_once __DIR__ . '/config/header.php';
             </button>
 
             <div x-show="abierto" x-collapse class="mt-4 space-y-4">
+                <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-800 flex items-center gap-1.5">
+                    <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                    Si registras una solución, la incidencia se marcará automáticamente como <strong>Completada</strong>.
+                </div>
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Causa raíz identificada</label>
                     <textarea name="causa_raiz" rows="2"

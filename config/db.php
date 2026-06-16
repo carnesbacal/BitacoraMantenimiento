@@ -10,14 +10,14 @@
 
 // --- Credenciales de conexión (ajustar si es necesario) ---
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'carnes_bacal');
+define('DB_NAME', 'mantenimiento_bacal');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 // --- Configuración global de la app ---
-define('APP_NAME', 'Carnes Bacal · Bitácora');
-define('APP_VERSION', '1.0.0');
+define('APP_NAME', 'Carnes Bacal · Bitácora Mantenimiento');
+define('APP_VERSION', '2.0.2');
 
 /**
  * APP_URL se auto-detecta a partir de la ubicación real del proyecto.

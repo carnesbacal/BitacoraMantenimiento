@@ -84,16 +84,16 @@ try {
                     },
                     colors: {
                         bacal: {
-                            50:  '#FEF2F2',
-                            100: '#FEE2E2',
-                            200: '#FECACA',
-                            300: '#FCA5A5',
-                            400: '#F87171',
-                            500: '#EF4444',
-                            600: '#DC2626',
-                            700: '#C8102E',  // rojo corporativo
-                            800: '#991B1B',
-                            900: '#7F1D1D',
+                            50:  '#FFFAF7',
+                            100: '#FFE8D6',
+                            200: '#FDC5A0',
+                            300: '#FB9F6B',
+                            400: '#F77943',
+                            500: '#F25A1F',
+                            600: '#E94E1B',
+                            700: '#E94E1B',  // Naranja Trupper principal
+                            800: '#1F1F1F',  // Negro/charcoal oscuro
+                            900: '#0A0A0A',  // Negro puro
                         },
                         gold: {
                             400: '#F2C94C',
@@ -170,7 +170,7 @@ try {
             color: #71717a !important;
         }
         html.dark input:focus, html.dark textarea:focus, html.dark select:focus {
-            border-color: #C8102E !important;
+            border-color: #E94E1B !important;
         }
 
         /* Backgrounds de colores tenues (50) → variantes oscuras tenues */
@@ -219,10 +219,10 @@ try {
         /* Item activo del sidebar */
         .nav-item-active {
             background: linear-gradient(90deg, rgba(200,16,46,0.08) 0%, rgba(200,16,46,0.02) 100%);
-            color: #C8102E;
-            border-left: 3px solid #C8102E;
+            color: #E94E1B;
+            border-left: 3px solid #E94E1B;
         }
-        .nav-item-active svg { color: #C8102E; }
+        .nav-item-active svg { color: #E94E1B; }
 
         /* Transición sutil al hover */
         .nav-item {
@@ -403,7 +403,7 @@ try {
                            @mouseenter="indiceSeleccionado = indicePlano(idxG, idxI)"
                            :class="indicePlano(idxG, idxI) === indiceSeleccionado ? 'bg-bacal-50' : 'hover:bg-zinc-50'"
                            class="flex items-center gap-3 px-4 py-2.5 text-sm border-l-2 border-transparent"
-                           :style="indicePlano(idxG, idxI) === indiceSeleccionado ? 'border-left-color: #C8102E' : ''">
+                           :style="indicePlano(idxG, idxI) === indiceSeleccionado ? 'border-left-color: #E94E1B' : ''">
                             <i :data-lucide="item.icono" class="w-4 h-4 text-zinc-400 flex-shrink-0"></i>
                             <div class="flex-1 min-w-0">
                                 <div class="font-semibold text-zinc-900 truncate" x-text="item.titulo"></div>
@@ -704,7 +704,7 @@ function busquedaGlobal() {
                 </div>
                 <div x-show="sidebarAbierto" x-transition.opacity class="overflow-hidden">
                     <div class="font-display font-bold text-zinc-900 text-base leading-tight">Carnes Bacal</div>
-                    <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Bitácora · Sistemas</div>
+                    <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Bitácora · Mantenimiento</div>
                 </div>
             </a>
         </div>
@@ -748,6 +748,30 @@ function busquedaGlobal() {
                 <span x-show="sidebarAbierto" x-transition.opacity>Mantenimientos</span>
             </a>
 
+            <a href="<?= url('refacciones.php') ?>"
+               class="nav-item <?= $pagina_activa === 'refacciones' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+                <i data-lucide="package" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <span x-show="sidebarAbierto" x-transition.opacity>Refacciones</span>
+            </a>
+
+            <a href="<?= url('almacen.php') ?>"
+               class="nav-item <?= $pagina_activa === 'almacen' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+                <i data-lucide="warehouse" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <span x-show="sidebarAbierto" x-transition.opacity>Almacén</span>
+            </a>
+
+            <a href="<?= url('herramientas.php') ?>"
+               class="nav-item <?= $pagina_activa === 'herramientas' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+                <i data-lucide="hammer" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <span x-show="sidebarAbierto" x-transition.opacity>Herramientas</span>
+            </a>
+
+            <a href="<?= url('medidores.php') ?>"
+               class="nav-item <?= $pagina_activa === 'medidores' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+                <i data-lucide="gauge" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <span x-show="sidebarAbierto" x-transition.opacity>Medidores</span>
+            </a>
+
             <a href="<?= url('mapa_sucursal.php') ?>"
                class="nav-item <?= $pagina_activa === 'mapa' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
                 <i data-lucide="map" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
@@ -775,6 +799,12 @@ function busquedaGlobal() {
                class="nav-item <?= $pagina_activa === 'reportes' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
                 <i data-lucide="bar-chart-3" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
                 <span x-show="sidebarAbierto" x-transition.opacity>Reportes</span>
+            </a>
+
+            <a href="<?= url('reportes_mantenimiento.php') ?>"
+               class="nav-item <?= $pagina_activa === 'reportes_mant' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+                <i data-lucide="line-chart" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <span x-show="sidebarAbierto" x-transition.opacity>Reportes mantenimiento</span>
             </a>
 
             <a href="<?= url('base_conocimiento.php') ?>"
@@ -809,7 +839,7 @@ function busquedaGlobal() {
 
             <a href="<?= url('admin/equipos.php') ?>"
                class="nav-item <?= $pagina_activa === 'admin_equipos' ? 'nav-item-active' : 'text-zinc-700' ?> flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
-                <i data-lucide="monitor" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
+                <i data-lucide="cog" class="w-5 h-5 flex-shrink-0 text-zinc-500"></i>
                 <span x-show="sidebarAbierto" x-transition.opacity>Equipos</span>
             </a>
 
@@ -983,7 +1013,7 @@ function busquedaGlobal() {
                             <div class="font-semibold text-sm text-zinc-900"><?= e($u['nombre']) ?></div>
                             <div class="text-xs text-zinc-500 mt-0.5"><?= e($u['email'] ?? '') ?></div>
                             <div class="mt-2">
-                                <?= badge($u['rol_nombre'], '#C8102E') ?>
+                                <?= badge($u['rol_nombre'], '#E94E1B') ?>
                             </div>
                         </div>
 

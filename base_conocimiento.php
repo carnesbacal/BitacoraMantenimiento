@@ -96,7 +96,7 @@ require_once __DIR__ . '/config/header.php';
         <div class="relative">
             <i data-lucide="search" class="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400"></i>
             <input type="text" name="q" value="<?= e($q) ?>" autofocus
-                   placeholder="Busca por palabras clave, ej: 'impresora no imprime', 'internet lento', 'báscula error'..."
+                   placeholder="Busca por palabras clave, ej: 'cámara de frío no enfría', 'compresor con fuga', 'banda transportadora atascada'..."
                    class="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-zinc-200 bg-white text-base focus:outline-none focus:border-bacal-700 focus:ring-2 focus:ring-bacal-100">
         </div>
 

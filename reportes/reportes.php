@@ -33,6 +33,14 @@ $reportes = [
         'tags' => ['Recurrencias', 'Análisis'],
     ],
     [
+        'titulo' => 'Análisis de costos',
+        'descripcion' => 'Costos de mantenimiento: gasto en proveedores vs refacciones internas, incidencias y proveedores más caros, tendencia por semana/mes/año.',
+        'icono' => 'hand-coins',
+        'color' => '#E94E1B',
+        'url' => url('reportes/reporte_costos.php'),
+        'tags' => ['Costos', 'Proveedores', 'Presupuesto'],
+    ],
+    [
         'titulo' => 'Productividad por técnico',
         'descripcion' => 'Carga de trabajo, tiempos promedio y cumplimiento de SLA por cada ingeniero/técnico.',
         'icono' => 'users',

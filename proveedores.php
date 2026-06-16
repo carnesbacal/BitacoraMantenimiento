@@ -185,6 +185,19 @@ if (es_post()) {
                         }
                     }
 
+                    // ----------------------------------------------
+                    // Procesar sucursales (modo: todas = sin filas; específicas = casillas)
+                    // ----------------------------------------------
+                    db_exec("DELETE FROM proveedor_sucursales WHERE proveedor_id = :pid", ['pid' => $proveedor_id]);
+                    $modo_suc = (string) input('modo_suc', 'todas');
+                    $sucursales_sel = ($modo_suc === 'especificas') ? (array) input('sucursales', []) : [];
+                    foreach ($sucursales_sel as $sid) {
+                        $sid = (int) $sid;
+                        if ($sid <= 0) continue;
+                        db_exec("INSERT IGNORE INTO proveedor_sucursales (proveedor_id, sucursal_id) VALUES (:pid, :sid)",
+                            ['pid' => $proveedor_id, 'sid' => $sid]);
+                    }
+
                     db()->commit();
                     flash_set('success', $mensaje_exito);
                     header('Location: ' . url('proveedor_ver.php?id=' . $proveedor_id));
@@ -217,6 +230,7 @@ if (es_post()) {
 $contactos_edit = [];
 $marcas_edit = '';
 $tipos_edit = '';
+$sucursales_edit = [];   // ids de sucursales asignadas al proveedor en edición
 if ($accion === 'editar' && $proveedor_edit) {
     $contactos_edit = db_all(
         "SELECT * FROM proveedor_contactos WHERE proveedor_id = :pid ORDER BY orden ASC",
@@ -228,7 +242,14 @@ if ($accion === 'editar' && $proveedor_edit) {
     $tipos_rows = db_all("SELECT tipo FROM proveedor_tipos_equipo WHERE proveedor_id = :pid ORDER BY tipo",
         ['pid' => $proveedor_edit['id']]);
     $tipos_edit = implode(', ', array_column($tipos_rows, 'tipo'));
+    $sucursales_edit = array_map('intval', array_column(
+        db_all("SELECT sucursal_id FROM proveedor_sucursales WHERE proveedor_id = :pid", ['pid' => $proveedor_edit['id']]),
+        'sucursal_id'
+    ));
 }
+
+// Catálogo de sucursales activas para las casillas del formulario
+$cat_sucursales = db_all("SELECT id, nombre, codigo FROM sucursales WHERE activo = 1 ORDER BY nombre");
 
 $titulo_pagina = 'Proveedores';
 $pagina_activa = 'proveedores';
@@ -428,6 +449,56 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
             </div>
         </div>
 
+        <!-- Sucursales que atiende -->
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6"
+             x-data="{ modo: '<?= !empty($sucursales_edit) ? 'especificas' : 'todas' ?>' }">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
+                <i data-lucide="store" class="w-4 h-4 text-bacal-700"></i> Sucursales que atiende
+            </h3>
+            <p class="text-xs text-zinc-500 mb-4">Define en qué sucursales está disponible este proveedor.</p>
+
+            <!-- Toggle Todas / Específicas -->
+            <div class="inline-flex bg-zinc-100 rounded-lg p-0.5 border border-zinc-200 mb-4">
+                <label class="cursor-pointer">
+                    <input type="radio" name="modo_suc" value="todas" x-model="modo" class="sr-only">
+                    <span class="block px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                          :class="modo === 'todas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'">
+                        Todas las sucursales
+                    </span>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="modo_suc" value="especificas" x-model="modo" class="sr-only">
+                    <span class="block px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                          :class="modo === 'especificas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'">
+                        Solo algunas
+                    </span>
+                </label>
+            </div>
+
+            <!-- Mensaje modo "todas" -->
+            <p x-show="modo === 'todas'" class="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2">
+                Este proveedor estará disponible para <strong>todas</strong> las sucursales (actuales y futuras).
+            </p>
+
+            <!-- Casillas (solo si específicas) -->
+            <div x-show="modo === 'especificas'" x-cloak class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <?php foreach ($cat_sucursales as $s): ?>
+                <label class="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer">
+                    <input type="checkbox" name="sucursales[]" value="<?= $s['id'] ?>"
+                           <?= in_array((int) $s['id'], $sucursales_edit, true) ? 'checked' : '' ?>
+                           class="rounded border-zinc-300 text-bacal-700 focus:ring-bacal-700">
+                    <span class="text-sm text-zinc-700">
+                        <?= e($s['nombre']) ?>
+                        <?php if (!empty($s['codigo'])): ?><span class="text-[10px] text-zinc-400 font-mono">(<?= e($s['codigo']) ?>)</span><?php endif; ?>
+                    </span>
+                </label>
+                <?php endforeach; ?>
+                <?php if (empty($cat_sucursales)): ?>
+                <p class="text-xs text-zinc-500 col-span-full">Aún no hay sucursales dadas de alta.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+
         <!-- Calificación y notas -->
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
             <h3 class="font-display text-base font-bold text-zinc-900 mb-4 flex items-center gap-2">
@@ -498,30 +569,86 @@ function formProveedor(contactosIniciales) {
 // ============================================================================
 else:
     $q = trim((string) input('q', ''));
+    // Vista seleccionable: 'tarjetas' (default) o 'lista' (alfabética)
+    $vista = (string) input('vista', 'tarjetas');
+    if (!in_array($vista, ['tarjetas', 'lista'], true)) $vista = 'tarjetas';
+
     $where = ['1=1'];
     $params = [];
     if ($q !== '') {
         $where[] = "(p.nombre LIKE :q1 OR p.servicio LIKE :q2 OR p.email LIKE :q3 OR p.razon_social LIKE :q4)";
         $params['q1'] = "%$q%"; $params['q2'] = "%$q%"; $params['q3'] = "%$q%"; $params['q4'] = "%$q%";
     }
+
+    // Filtro por sucursal (botón). Incluye los proveedores "globales" (sin asignación = todas).
+    $ver_todas = tiene_permiso('ver_todas_sucursales');
+    $f_sucursal = (int) input('sucursal', 0);
+    if (!$ver_todas && !empty($u_actual['sucursal_id'])) {
+        $f_sucursal = (int) $u_actual['sucursal_id']; // usuario de una sola sucursal: forzar la suya
+    }
+    if ($f_sucursal > 0) {
+        $where[] = "(EXISTS (SELECT 1 FROM proveedor_sucursales psf WHERE psf.proveedor_id = p.id AND psf.sucursal_id = :fsuc)
+                     OR NOT EXISTS (SELECT 1 FROM proveedor_sucursales psn WHERE psn.proveedor_id = p.id))";
+        $params['fsuc'] = $f_sucursal;
+    }
+
     $where_sql = 'WHERE ' . implode(' AND ', $where);
+
+    // En la vista de lista se ordena estrictamente alfabético; en tarjetas se prioriza activos.
+    $order_sql = ($vista === 'lista')
+        ? 'ORDER BY p.nombre ASC'
+        : 'ORDER BY p.activo DESC, p.nombre ASC';
 
     $proveedores = db_all(
         "SELECT p.*,
                 (SELECT COUNT(*) FROM equipos WHERE proveedor_id = p.id AND activo = 1) AS equipos_count,
                 (SELECT COUNT(*) FROM incidencias WHERE proveedor_escalado_id = p.id) AS incidencias_count,
                 (SELECT GROUP_CONCAT(DISTINCT tipo SEPARATOR ', ')
-                 FROM proveedor_tipos_equipo WHERE proveedor_id = p.id LIMIT 5) AS tipos_resumen
+                 FROM proveedor_tipos_equipo WHERE proveedor_id = p.id LIMIT 5) AS tipos_resumen,
+                (SELECT GROUP_CONCAT(s.codigo ORDER BY s.codigo SEPARATOR ', ')
+                 FROM proveedor_sucursales ps JOIN sucursales s ON ps.sucursal_id = s.id
+                 WHERE ps.proveedor_id = p.id) AS sucursales_resumen
          FROM proveedores p
          $where_sql
-         ORDER BY p.activo DESC, p.nombre ASC",
+         $order_sql",
         $params
     );
+
+    // Helper para conservar parámetros (q, sucursal y vista) al cambiar de vista
+    $url_vista = function (string $v) use ($q, $f_sucursal) {
+        $qs = ['vista' => $v];
+        if ($q !== '') $qs['q'] = $q;
+        if ($f_sucursal > 0) $qs['sucursal'] = $f_sucursal;
+        return url('proveedores.php?' . http_build_query($qs));
+    };
 ?>
 
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
     <div>
-        <h2 class="font-display text-2xl font-extrabold text-zinc-900">Proveedores</h2>
+        <div class="flex items-center gap-3 flex-wrap">
+            <h2 class="font-display text-2xl font-extrabold text-zinc-900">Proveedores</h2>
+            <?php if ($ver_todas && usuario_prefiere_radio_sucursal()): ?>
+            <form method="GET" class="flex items-center gap-2 flex-wrap bg-white border border-zinc-300 rounded-lg px-3 py-1.5">
+                <input type="hidden" name="vista" value="<?= e($vista) ?>">
+                <?php if ($q !== ''): ?><input type="hidden" name="q" value="<?= e($q) ?>"><?php endif; ?>
+                <span class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Sucursal:</span>
+                <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                    <input type="radio" name="sucursal" value="" onchange="this.form.submit()"
+                           <?= $f_sucursal <= 0 ? 'checked' : '' ?>
+                           class="text-bacal-700 focus:ring-bacal-700">
+                    Todas
+                </label>
+                <?php foreach ($cat_sucursales as $s): ?>
+                <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                    <input type="radio" name="sucursal" value="<?= $s['id'] ?>" onchange="this.form.submit()"
+                           <?= $f_sucursal == $s['id'] ? 'checked' : '' ?>
+                           class="text-bacal-700 focus:ring-bacal-700">
+                    <?= e($s['nombre']) ?>
+                </label>
+                <?php endforeach; ?>
+            </form>
+            <?php endif; ?>
+        </div>
         <p class="text-xs text-zinc-500 mt-0.5">Directorio de proveedores de servicios. <?= count($proveedores) ?> registro(s).</p>
     </div>
     <?php if ($puede_crear_editar): ?>
@@ -532,17 +659,150 @@ else:
     <?php endif; ?>
 </div>
 
-<!-- Buscador -->
-<form method="GET" class="mb-4">
-    <div class="relative max-w-md">
-        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
-        <input type="text" name="q" value="<?= e($q) ?>"
-               placeholder="Buscar por nombre, servicio, razón social o email..."
-               class="w-full pl-9 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-    </div>
-</form>
+<!-- Buscador + selector de vista -->
+<div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+    <form method="GET" class="flex-1">
+        <input type="hidden" name="vista" value="<?= e($vista) ?>">
+        <?php if ($ver_todas && $f_sucursal > 0): ?>
+        <input type="hidden" name="sucursal" value="<?= (int) $f_sucursal ?>">
+        <?php endif; ?>
+        <div class="relative max-w-md">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
+            <input type="text" name="q" value="<?= e($q) ?>"
+                   placeholder="Buscar por nombre, servicio, razón social o email..."
+                   class="w-full pl-9 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+        </div>
+    </form>
 
-<!-- Tarjetas de proveedores -->
+    <!-- Selector rápido de sucursal (dropdown — usuarios sin preferencia radio) -->
+    <?php if ($ver_todas && !usuario_prefiere_radio_sucursal()): ?>
+    <form method="GET" class="relative self-start">
+        <input type="hidden" name="vista" value="<?= e($vista) ?>">
+        <?php if ($q !== ''): ?><input type="hidden" name="q" value="<?= e($q) ?>"><?php endif; ?>
+        <i data-lucide="store" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
+        <select name="sucursal" onchange="this.form.submit()"
+                class="pl-9 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 focus:outline-none focus:border-bacal-700 focus:ring-2 focus:ring-bacal-100 appearance-none cursor-pointer">
+            <option value="">Todas las sucursales</option>
+            <?php foreach ($cat_sucursales as $s): ?>
+            <option value="<?= $s['id'] ?>" <?= $f_sucursal == $s['id'] ? 'selected' : '' ?>><?= e($s['nombre']) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"></i>
+    </form>
+    <?php endif; ?>
+
+    <!-- Toggle de vista: tarjetas / lista alfabética -->
+    <div class="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 self-start shadow-sm">
+        <a href="<?= $url_vista('tarjetas') ?>"
+           class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors <?= $vista === 'tarjetas' ? 'bg-bacal-700 text-white' : 'text-zinc-600 hover:bg-zinc-100' ?>"
+           title="Vista de tarjetas">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i> Tarjetas
+        </a>
+        <a href="<?= $url_vista('lista') ?>"
+           class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors <?= $vista === 'lista' ? 'bg-bacal-700 text-white' : 'text-zinc-600 hover:bg-zinc-100' ?>"
+           title="Lista en orden alfabético">
+            <i data-lucide="list" class="w-4 h-4"></i> Lista A-Z
+        </a>
+    </div>
+</div>
+
+<?php if ($vista === 'lista'): ?>
+<!-- ====================== VISTA LISTA (alfabética) ====================== -->
+<div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-zinc-50 border-b border-zinc-200 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                    <th class="px-4 py-2.5 font-semibold">Proveedor</th>
+                    <th class="px-4 py-2.5 font-semibold hidden md:table-cell">Servicio</th>
+                    <th class="px-4 py-2.5 font-semibold hidden lg:table-cell">Teléfono</th>
+                    <th class="px-4 py-2.5 font-semibold hidden lg:table-cell">Email</th>
+                    <th class="px-4 py-2.5 font-semibold text-center">Equipos</th>
+                    <?php if ($puede_crear_editar || $puede_desactivar): ?>
+                    <th class="px-4 py-2.5 font-semibold text-right">Acciones</th>
+                    <?php endif; ?>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-100">
+                <?php $letra_actual = ''; foreach ($proveedores as $p):
+                    $inicial = mb_strtoupper(mb_substr($p['nombre'], 0, 1));
+                ?>
+                    <?php if ($inicial !== $letra_actual): $letra_actual = $inicial; ?>
+                    <tr class="bg-zinc-50/70">
+                        <td colspan="6" class="px-4 py-1 text-[11px] font-bold text-bacal-700"><?= e($letra_actual) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                <tr class="hover:bg-zinc-50 <?= !$p['activo'] ? 'opacity-50' : '' ?>">
+                    <td class="px-4 py-2.5">
+                        <a href="<?= url('proveedor_ver.php?id=' . $p['id']) ?>"
+                           class="font-semibold text-zinc-900 hover:text-bacal-700">
+                            <?= e($p['nombre']) ?>
+                        </a>
+                        <?php if (!$p['activo']): ?>
+                        <span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-600 align-middle">inactivo</span>
+                        <?php endif; ?>
+                        <?php if ($p['calificacion']): ?>
+                        <span class="ml-1 text-[11px] text-amber-500 align-middle">★ <?= (int) $p['calificacion'] ?></span>
+                        <?php endif; ?>
+                        <div class="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-1">
+                            <i data-lucide="store" class="w-3 h-3"></i>
+                            <?= $p['sucursales_resumen'] ? e($p['sucursales_resumen']) : 'Todas' ?>
+                        </div>
+                    </td>
+                    <td class="px-4 py-2.5 text-zinc-600 hidden md:table-cell"><?= e($p['servicio'] ?: '—') ?></td>
+                    <td class="px-4 py-2.5 hidden lg:table-cell">
+                        <?php if ($p['telefono']): ?>
+                        <a href="tel:<?= e($p['telefono']) ?>" class="text-zinc-600 hover:text-bacal-700"><?= e($p['telefono']) ?></a>
+                        <?php else: ?><span class="text-zinc-400">—</span><?php endif; ?>
+                    </td>
+                    <td class="px-4 py-2.5 hidden lg:table-cell">
+                        <?php if ($p['email']): ?>
+                        <a href="mailto:<?= e($p['email']) ?>" class="text-zinc-600 hover:text-bacal-700 truncate"><?= e($p['email']) ?></a>
+                        <?php else: ?><span class="text-zinc-400">—</span><?php endif; ?>
+                    </td>
+                    <td class="px-4 py-2.5 text-center font-semibold text-zinc-900"><?= $p['equipos_count'] ?></td>
+                    <?php if ($puede_crear_editar || $puede_desactivar): ?>
+                    <td class="px-4 py-2.5">
+                        <div class="flex items-center justify-end gap-1">
+                            <?php if ($puede_crear_editar): ?>
+                            <a href="<?= url('proveedores.php?accion=editar&id=' . $p['id']) ?>"
+                               class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100" title="Editar">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($puede_desactivar): ?>
+                            <form method="POST" action="<?= url('proveedores.php?accion=toggle&id=' . $p['id']) ?>"
+                                  onsubmit="return confirm('¿<?= $p['activo'] ? 'Desactivar' : 'Activar' ?> este proveedor?');">
+                                <?= csrf_input() ?>
+                                <input type="hidden" name="op" value="toggle">
+                                <button type="submit" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100"
+                                        title="<?= $p['activo'] ? 'Desactivar' : 'Activar' ?>">
+                                    <i data-lucide="<?= $p['activo'] ? 'power' : 'power-off' ?>" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                    <?php endif; ?>
+                </tr>
+                <?php endforeach; ?>
+                <?php if (empty($proveedores)): ?>
+                <tr>
+                    <td colspan="6" class="px-4 py-12 text-center">
+                        <div class="w-16 h-16 mx-auto rounded-full bg-zinc-100 flex items-center justify-center mb-3">
+                            <i data-lucide="search-x" class="w-8 h-8 text-zinc-400"></i>
+                        </div>
+                        <p class="text-sm font-medium text-zinc-700"><?= $q !== '' ? 'Sin resultados' : 'Sin proveedores registrados' ?></p>
+                    </td>
+                </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php else: ?>
+<!-- ====================== VISTA TARJETAS ====================== -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     <?php foreach ($proveedores as $p): ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5 hover:shadow-md transition-shadow group <?= !$p['activo'] ? 'opacity-50' : '' ?>">
@@ -568,6 +828,10 @@ else:
                     <?php endfor; ?>
                 </div>
                 <?php endif; ?>
+                <div class="text-[10px] text-zinc-400 mt-1 flex items-center gap-1">
+                    <i data-lucide="store" class="w-3 h-3"></i>
+                    <?= $p['sucursales_resumen'] ? e($p['sucursales_resumen']) : 'Todas las sucursales' ?>
+                </div>
             </div>
 
             <!-- Acciones -->
@@ -652,6 +916,7 @@ else:
     </div>
     <?php endif; ?>
 </div>
+<?php endif; /* fin vista tarjetas / lista */ ?>
 
 <?php endif; ?>
 

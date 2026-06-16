@@ -17,7 +17,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/admin_helpers.php';
 
 $tab = (string) input('tab', 'categorias');
-$tabs_validos = ['categorias', 'tipos', 'severidades', 'estados', 'origenes'];
+$tabs_validos = ['categorias', 'tipos', 'severidades', 'estados', 'origenes', 'medidor_tipos'];
 if (!in_array($tab, $tabs_validos, true)) $tab = 'categorias';
 
 $errores = [];
@@ -36,6 +36,7 @@ if (es_post()) {
             'severidades'   => ['tabla' => 'severidades', 'label' => 'Severidad', 'cols' => ['nombre', 'nivel', 'color', 'sla_horas', 'descripcion']],
             'estados'       => ['tabla' => 'estados', 'label' => 'Estado', 'cols' => ['nombre', 'orden', 'color', 'es_inicial', 'es_final', 'descripcion']],
             'origenes'      => ['tabla' => 'origenes_reporte', 'label' => 'Origen', 'cols' => ['nombre']],
+            'medidor_tipos' => ['tabla' => 'medidor_tipos', 'label' => 'Tipo de medidor', 'cols' => ['nombre', 'unidad', 'icono', 'color']],
         ];
 
         if (!isset($tablas_map[$tabla_actual])) {
@@ -105,7 +106,7 @@ require_once __DIR__ . '/../config/header.php';
 ?>
 
 <div class="animate-fade-in">
-    <?php render_admin_header('Catálogos', 'Categorías, tipos, severidades, estados y orígenes de reporte'); ?>
+    <?php render_admin_header('Catálogos', 'Categorías, tipos, severidades, estados, orígenes y tipos de medidor'); ?>
 
     <?php if (!empty($errores)): ?>
     <div class="mb-4 px-4 py-3 rounded-lg bg-bacal-50 border border-bacal-200 text-bacal-800 text-sm">
@@ -123,6 +124,7 @@ require_once __DIR__ . '/../config/header.php';
                 'severidades' => ['Severidades', 'zap'],
                 'estados' => ['Estados', 'flag'],
                 'origenes' => ['Orígenes', 'inbox'],
+                'medidor_tipos' => ['Tipos de medidor', 'gauge'],
             ];
             foreach ($tabs_labels as $key => [$label, $icono]):
                 $activo = $tab === $key;
@@ -277,6 +279,11 @@ require_once __DIR__ . '/../config/header.php';
         $items = db_all("SELECT * FROM origenes_reporte ORDER BY activo DESC, id ASC");
     ?>
     <?= render_lista_origenes($items) ?>
+
+    <?php elseif ($tab === 'medidor_tipos'):
+        $items = db_all("SELECT * FROM medidor_tipos ORDER BY activo DESC, nombre ASC");
+    ?>
+    <?= render_lista_medidor_tipos($items) ?>
 
     <?php endif; ?>
 </div>
@@ -484,33 +491,171 @@ function render_lista_estados(array $items): string {
 
 function render_lista_origenes(array $items): string {
     ob_start(); ?>
-    <div x-data="{ mostrarNuevo: false }">
+    <div x-data="{ editandoId: null, mostrarNuevo: false }">
         <div class="mb-3">
             <button @click="mostrarNuevo = !mostrarNuevo" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold">
                 <i data-lucide="plus" class="w-4 h-4"></i> <span x-text="mostrarNuevo ? 'Cancelar' : 'Nuevo origen'"></span>
             </button>
         </div>
+
         <div x-show="mostrarNuevo" x-cloak class="bg-white rounded-xl border border-zinc-200 shadow-sm p-4 mb-4">
-            <form method="POST" class="flex gap-2">
+            <form method="POST" class="flex gap-3 items-end">
                 <?= csrf_input() ?>
                 <input type="hidden" name="op" value="crear">
                 <input type="hidden" name="tabla" value="origenes">
-                <input type="text" name="nombre" placeholder="ej. WhatsApp Business" required maxlength="50"
-                       class="flex-1 px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
-                <button type="submit" class="px-3 py-1.5 rounded-md bg-bacal-700 text-white text-sm font-semibold">Crear</button>
+                <div class="flex-1">
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Nombre *</label>
+                    <input type="text" name="nombre" required maxlength="100"
+                           class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <button type="submit" class="px-3 py-1.5 rounded-md bg-bacal-700 text-white text-xs font-semibold">Crear</button>
             </form>
         </div>
+
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm divide-y divide-zinc-100">
             <?php foreach ($items as $it): ?>
-            <div class="px-4 py-2.5 flex items-center gap-2 group <?= !$it['activo'] ? 'opacity-50' : '' ?>">
-                <span class="font-medium text-sm text-zinc-900 flex-1"><?= e($it['nombre']) ?></span>
-                <form method="POST" class="opacity-0 group-hover:opacity-100">
-                    <?= csrf_input() ?>
-                    <input type="hidden" name="op" value="toggle">
-                    <input type="hidden" name="tabla" value="origenes">
-                    <input type="hidden" name="id" value="<?= $it['id'] ?>">
-                    <button type="submit" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100"><i data-lucide="power" class="w-4 h-4"></i></button>
-                </form>
+            <div class="<?= !$it['activo'] ? 'opacity-50' : '' ?>">
+                <div x-show="editandoId !== <?= $it['id'] ?>" class="px-4 py-2.5 flex items-center gap-2 group">
+                    <i data-lucide="inbox" class="w-4 h-4 text-zinc-400 shrink-0"></i>
+                    <span class="flex-1 text-sm text-zinc-800"><?= e($it['nombre']) ?></span>
+                    <div class="flex gap-1 opacity-0 group-hover:opacity-100">
+                        <button @click="editandoId = <?= $it['id'] ?>" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                        </button>
+                        <form method="POST">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="op" value="toggle">
+                            <input type="hidden" name="tabla" value="origenes">
+                            <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                            <button type="submit" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100">
+                                <i data-lucide="power" class="w-4 h-4"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div x-show="editandoId === <?= $it['id'] ?>" x-cloak class="px-4 py-2.5 bg-zinc-50">
+                    <form method="POST" class="flex gap-2 items-center">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="op" value="editar">
+                        <input type="hidden" name="tabla" value="origenes">
+                        <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                        <input type="text" name="nombre" value="<?= e($it['nombre']) ?>" required
+                               class="flex-1 px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                        <button type="button" @click="editandoId = null" class="px-2 py-1 rounded border border-zinc-300 text-xs">Cancelar</button>
+                        <button type="submit" class="px-2 py-1 rounded bg-bacal-700 text-white text-xs font-semibold">Guardar</button>
+                    </form>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php return ob_get_clean();
+}
+
+function render_lista_medidor_tipos(array $items): string {
+    $unidades_comunes = ['kWh', 'm3', 'L', 'GJ', 'kg', 'unidad'];
+    ob_start(); ?>
+    <div x-data="{ editandoId: null, mostrarNuevo: false }">
+        <p class="text-xs text-zinc-500 mb-3">
+            Tipos de medidor para el módulo de servicios (luz, agua, gas, diésel…). Cada tipo define su unidad de medida.
+        </p>
+        <div class="mb-3">
+            <button @click="mostrarNuevo = !mostrarNuevo" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold">
+                <i data-lucide="plus" class="w-4 h-4"></i> <span x-text="mostrarNuevo ? 'Cancelar' : 'Nuevo tipo de medidor'"></span>
+            </button>
+        </div>
+
+        <div x-show="mostrarNuevo" x-cloak class="bg-white rounded-xl border border-zinc-200 shadow-sm p-4 mb-4">
+            <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <?= csrf_input() ?>
+                <input type="hidden" name="op" value="crear">
+                <input type="hidden" name="tabla" value="medidor_tipos">
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Nombre *</label>
+                    <input type="text" name="nombre" required maxlength="100" placeholder="ej. Luz"
+                           class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Unidad *</label>
+                    <input type="text" name="unidad" required maxlength="20" placeholder="ej. kWh" list="unidades_med"
+                           class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                    <datalist id="unidades_med"><?php foreach ($unidades_comunes as $u): ?><option value="<?= e($u) ?>"><?php endforeach; ?></datalist>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Icono</label>
+                    <input type="text" name="icono" maxlength="50" placeholder="ej. zap"
+                           class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Color</label>
+                    <?= render_color_picker('color', '#6B7280') ?>
+                </div>
+                <div class="md:col-span-4 flex items-center justify-between">
+                    <a href="https://lucide.dev/icons/" target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-bacal-700 underline">Ver nombres de iconos disponibles ↗</a>
+                    <button type="submit" class="px-3 py-1 rounded-md bg-bacal-700 text-white text-xs font-semibold">Crear</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm divide-y divide-zinc-100">
+            <?php foreach ($items as $it): $color = $it['color'] ?: '#6B7280'; ?>
+            <div class="<?= !$it['activo'] ? 'opacity-50' : '' ?>">
+                <div x-show="editandoId !== <?= $it['id'] ?>" class="px-4 py-3 flex items-center gap-3 group">
+                    <div class="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
+                         style="background-color: <?= e($color) ?>1f; color: <?= e($color) ?>; border: 1px solid <?= e($color) ?>40">
+                        <i data-lucide="<?= e($it['icono'] ?: 'gauge') ?>" class="w-4 h-4"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-sm text-zinc-900"><?= e($it['nombre']) ?></div>
+                        <div class="text-xs text-zinc-500">Unidad: <span class="font-mono"><?= e($it['unidad']) ?></span></div>
+                    </div>
+                    <div class="flex gap-1 opacity-0 group-hover:opacity-100">
+                        <button @click="editandoId = <?= $it['id'] ?>" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                        </button>
+                        <form method="POST">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="op" value="toggle">
+                            <input type="hidden" name="tabla" value="medidor_tipos">
+                            <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                            <button type="submit" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100" title="Activar/desactivar">
+                                <i data-lucide="power" class="w-4 h-4"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div x-show="editandoId === <?= $it['id'] ?>" x-cloak class="px-4 py-3 bg-zinc-50">
+                    <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="op" value="editar">
+                        <input type="hidden" name="tabla" value="medidor_tipos">
+                        <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                        <div>
+                            <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Nombre</label>
+                            <input type="text" name="nombre" value="<?= e($it['nombre']) ?>" required
+                                   class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Unidad</label>
+                            <input type="text" name="unidad" value="<?= e($it['unidad']) ?>" required list="unidades_med_<?= $it['id'] ?>"
+                                   class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm">
+                            <datalist id="unidades_med_<?= $it['id'] ?>"><?php foreach ($unidades_comunes as $u): ?><option value="<?= e($u) ?>"><?php endforeach; ?></datalist>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Icono</label>
+                            <input type="text" name="icono" value="<?= e((string) $it['icono']) ?>"
+                                   class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Color</label>
+                            <?= render_color_picker('color', $it['color'] ?: '#6B7280') ?>
+                        </div>
+                        <div class="md:col-span-4 flex justify-end gap-1">
+                            <button type="button" @click="editandoId = null" class="px-3 py-1 rounded border border-zinc-300 text-xs">Cancelar</button>
+                            <button type="submit" class="px-3 py-1 rounded bg-bacal-700 text-white text-xs font-semibold">Guardar</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             <?php endforeach; ?>
         </div>

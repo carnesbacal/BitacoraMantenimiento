@@ -17,6 +17,8 @@ require_once __DIR__ . '/config/header.php';
 require_once __DIR__ . '/config/mantenimientos_helpers.php';
 require_once __DIR__ . '/config/inteligencia_helpers.php';
 require_once __DIR__ . '/config/comunicacion_helpers.php';
+require_once __DIR__ . '/config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/config/medidores_helpers.php';
 
 $u = usuario_actual();
 
@@ -98,6 +100,12 @@ $sla_data = db_one(
 $kpi_sla_pct = ($sla_data['total'] ?? 0) > 0
     ? round(((int) $sla_data['cumplidos'] / (int) $sla_data['total']) * 100)
     : null;
+
+// Costos del mes
+$costos_mes = costos_resumen_periodo(
+    date('Y-m-01'), date('Y-m-d'),
+    $where_sucursal, $params_sucursal
+);
 
 // ----------------------------------------------------------------------------
 // Datos de gráficas
@@ -227,6 +235,29 @@ if (tiene_permiso('resolver')) {
 $sucursal_para_mant = (tiene_permiso('ver_todas_sucursales') || tiene_permiso('administrar')) ? null : ($u['sucursal_id'] ?? null);
 $mantenimientos_widget = proximos_mantenimientos(14, $sucursal_para_mant);
 
+// ----------------------------------------------------------------------------
+// Datos de medidores (consumo del mes + alertas de consumo anómalo)
+// ----------------------------------------------------------------------------
+$med_suc = medidor_sucursal_usuario();          // null = todas; int = su sucursal; 0 = ninguna
+$med_puede_ver = ($med_suc !== 0);
+$med_resumen_mes = ['num_lecturas' => 0, 'medidores_activos' => 0, 'costo_total' => 0.0];
+$med_por_tipo_mes = [];
+$med_alertas = [];
+if ($med_puede_ver) {
+    $med_ini = date('Y-m-01');
+    $med_hoy = date('Y-m-d');
+    $med_resumen_mes  = consumo_resumen_periodo($med_ini, $med_hoy, $med_suc ?: null);
+    $med_por_tipo_mes = consumo_por_tipo($med_ini, $med_hoy, $med_suc ?: null);
+
+    $med_lista = listar_medidores(['solo_activos' => true, 'sucursal_id' => ($med_suc && $med_suc > 0) ? $med_suc : null]);
+    foreach ($med_lista as $md) {
+        if ($md['ultimo_consumo'] !== null) {
+            $an = consumo_anomalo((int) $md['id'], (float) $md['ultimo_consumo']);
+            if ($an['anomalo']) $med_alertas[] = $md + ['nivel' => $an['nivel'], 'prom' => $an['prom']];
+        }
+    }
+}
+
 // Equipos problemáticos (con fallas recurrentes)
 $equipos_problema = equipos_problematicos($sucursal_para_mant, 8);
 
@@ -310,9 +341,30 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
     <!-- Encabezado: saludo + filtro de sucursal -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-            <h2 class="font-display text-3xl font-extrabold text-zinc-900 leading-tight">
-                <?= $saludo ?>, <?= e(explode(' ', $u['nombre'])[0]) ?>
-            </h2>
+            <div class="flex items-center gap-3 flex-wrap">
+                <h2 class="font-display text-3xl font-extrabold text-zinc-900 leading-tight">
+                    <?= $saludo ?>, <?= e(explode(' ', $u['nombre'])[0]) ?>
+                </h2>
+                <?php if ($ver_todas && usuario_prefiere_radio_sucursal()): ?>
+                <form method="GET" class="flex items-center gap-2 flex-wrap bg-white border border-zinc-300 rounded-lg px-3 py-1.5">
+                    <span class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Sucursal:</span>
+                    <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                        <input type="radio" name="sucursal" value="" onchange="this.form.submit()"
+                               <?= $sucursal_filtro <= 0 ? 'checked' : '' ?>
+                               class="text-bacal-700 focus:ring-bacal-700">
+                        Todas
+                    </label>
+                    <?php foreach ($sucursales as $s): ?>
+                    <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                        <input type="radio" name="sucursal" value="<?= $s['id'] ?>" onchange="this.form.submit()"
+                               <?= $sucursal_filtro == $s['id'] ? 'checked' : '' ?>
+                               class="text-bacal-700 focus:ring-bacal-700">
+                        <?= e($s['nombre']) ?>
+                    </label>
+                    <?php endforeach; ?>
+                </form>
+                <?php endif; ?>
+            </div>
             <p class="text-sm text-zinc-500 mt-1">
                 Resumen del mes en curso ·
                 <span class="font-medium text-zinc-700"><?= e($mes_actual_es) ?></span>
@@ -320,6 +372,7 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
         </div>
 
         <?php if ($ver_todas): ?>
+        <?php if (!usuario_prefiere_radio_sucursal()): ?>
         <form method="GET" class="flex items-center gap-2">
             <div class="relative">
                 <i data-lucide="store" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
@@ -335,6 +388,7 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
                 <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"></i>
             </div>
         </form>
+        <?php endif; ?>
         <?php endif; ?>
     </div>
 
@@ -474,6 +528,139 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
             <div class="text-[11px] text-zinc-500 mt-2 uppercase tracking-wider font-bold">SLA cumplido</div>
         </div>
     </div>
+
+    <!-- Widget de costos del mes -->
+    <?php if (tiene_permiso('ver_reportes') || tiene_permiso('administrar')): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-zinc-100 flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+                <i data-lucide="hand-coins" class="w-5 h-5 text-bacal-700"></i>
+                <h3 class="font-display text-lg font-bold text-zinc-900">Costos del mes</h3>
+                <span class="text-xs text-zinc-500"><?= e(date('F Y')) ?></span>
+            </div>
+            <a href="<?= url('reportes/reporte_costos.php') ?>"
+               class="text-xs text-zinc-500 hover:text-bacal-700 font-medium flex items-center gap-1">
+                Reporte completo <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </a>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-zinc-100">
+            <!-- Total -->
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Total gastado</div>
+                <div class="font-display text-3xl font-extrabold text-bacal-700 leading-none">
+                    <?= e(fmt_dinero_corto($costos_mes['total'])) ?>
+                </div>
+                <div class="text-[10px] text-zinc-400 mt-1.5"><?= e(fmt_dinero($costos_mes['total'])) ?></div>
+            </div>
+            <!-- Externo (proveedores) -->
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Proveedores</div>
+                <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
+                    <?= e(fmt_dinero_corto($costos_mes['externo'])) ?>
+                </div>
+                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['pct_externo'] ?>% del total</div>
+            </div>
+            <!-- Interno (refacciones) -->
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Refacciones internas</div>
+                <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
+                    <?= e(fmt_dinero_corto($costos_mes['interno'])) ?>
+                </div>
+                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['pct_interno'] ?>% del total</div>
+            </div>
+            <!-- Promedio -->
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Promedio / incidencia</div>
+                <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
+                    <?= e(fmt_dinero_corto($costos_mes['promedio'])) ?>
+                </div>
+                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['con_costo'] ?> con costo registrado</div>
+            </div>
+        </div>
+        <?php if ($costos_mes['total'] > 0): ?>
+        <div class="px-5 pb-4">
+            <div class="flex gap-0.5 h-2 rounded-full overflow-hidden">
+                <?php if ($costos_mes['pct_externo'] > 0): ?>
+                <div class="bg-bacal-600" style="width: <?= $costos_mes['pct_externo'] ?>%" title="Proveedores"></div>
+                <?php endif; ?>
+                <?php if ($costos_mes['pct_interno'] > 0): ?>
+                <div class="bg-zinc-400" style="width: <?= $costos_mes['pct_interno'] ?>%" title="Refacciones internas"></div>
+                <?php endif; ?>
+            </div>
+            <div class="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-bacal-600"></span> Proveedores</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-zinc-400"></span> Refacciones internas</span>
+            </div>
+        </div>
+        <?php else: ?>
+        <div class="px-5 pb-4 text-xs text-zinc-400">Sin costos registrados este mes.</div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- Widget: Consumos de servicios (medidores) -->
+    <?php if ($med_puede_ver && ($med_resumen_mes['num_lecturas'] > 0 || !empty($med_alertas))): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-zinc-100 flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+                <i data-lucide="gauge" class="w-5 h-5 text-bacal-700"></i>
+                <h3 class="font-display text-lg font-bold text-zinc-900">Consumos del mes</h3>
+                <span class="text-xs text-zinc-500"><?= e(date('F Y')) ?></span>
+            </div>
+            <a href="<?= url('reportes_mantenimiento.php') ?>"
+               class="text-xs text-zinc-500 hover:text-bacal-700 font-medium flex items-center gap-1">
+                Ver reporte <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </a>
+        </div>
+
+        <!-- Alertas de consumo anómalo -->
+        <?php if (!empty($med_alertas)): ?>
+        <div class="px-5 pt-4">
+            <?php foreach ($med_alertas as $al): $muy = $al['nivel'] === 'muy_alto'; ?>
+            <a href="<?= url('medidor_ver.php?id=' . $al['id']) ?>"
+               class="flex items-center gap-2.5 px-3 py-2 mb-2 rounded-lg border <?= $muy ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200' ?> hover:shadow-sm transition-shadow">
+                <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 <?= $muy ? 'text-red-600' : 'text-amber-600' ?>"></i>
+                <div class="flex-1 min-w-0">
+                    <span class="font-semibold text-sm text-zinc-900"><?= e($al['nombre']) ?></span>
+                    <span class="text-xs text-zinc-500">· <?= e($al['sucursal_codigo']) ?></span>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs font-bold <?= $muy ? 'text-red-600' : 'text-amber-700' ?>">
+                        <?= e(fmt_consumo((float) $al['ultimo_consumo'], $al['unidad'])) ?>
+                    </div>
+                    <div class="text-[10px] text-zinc-400">prom. <?= e(fmt_lectura($al['prom'])) ?></div>
+                </div>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <div class="grid grid-cols-3 divide-x divide-zinc-100">
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Costo estimado</div>
+                <div class="font-display text-3xl font-extrabold text-emerald-700 leading-none">$<?= e(number_format($med_resumen_mes['costo_total'], 0)) ?></div>
+                <div class="text-[10px] text-zinc-400 mt-1.5">consumo × tarifa</div>
+            </div>
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Lecturas</div>
+                <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= (int) $med_resumen_mes['num_lecturas'] ?></div>
+                <div class="text-[10px] text-zinc-400 mt-1.5"><?= (int) $med_resumen_mes['medidores_activos'] ?> medidor(es)</div>
+            </div>
+            <div class="p-5">
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Servicios</div>
+                <div class="flex flex-wrap gap-1 mt-1">
+                    <?php foreach ($med_por_tipo_mes as $t): $c = $t['color'] ?: '#6B7280'; ?>
+                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style="background-color: <?= e($c) ?>15; color: <?= e($c) ?>" title="<?= e($t['nombre']) ?>: $<?= e(number_format((float) $t['costo_total'], 0)) ?>">
+                        <i data-lucide="<?= e($t['icono'] ?: 'gauge') ?>" class="w-3 h-3"></i><?= e($t['nombre']) ?>
+                    </span>
+                    <?php endforeach; ?>
+                    <?php if (empty($med_por_tipo_mes)): ?><span class="text-[10px] text-zinc-400">sin consumos aún</span><?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Mi trabajo pendiente -->
     <?php if (tiene_permiso('resolver')): ?>

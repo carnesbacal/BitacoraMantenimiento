@@ -160,8 +160,16 @@ require_once __DIR__ . '/config/header.php';
             <span class="text-zinc-700 font-medium"><?= e($equipo['codigo_inventario']) ?></span>
         </div>
 
-        <?php if ($puede_editar): ?>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
+            <a href="<?= url('equipo_componentes.php?id=' . $id) ?>"
+               class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
+                <i data-lucide="cpu" class="w-4 h-4"></i> Componentes
+            </a>
+            <a href="<?= url('equipo_refacciones.php?id=' . $id) ?>"
+               class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
+                <i data-lucide="package" class="w-4 h-4"></i> Refacciones
+            </a>
+            <?php if ($puede_editar): ?>
             <button type="button" @click="mostrarTransferir = true"
                     class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
                 <i data-lucide="arrow-right-left" class="w-4 h-4"></i> Transferir
@@ -170,8 +178,8 @@ require_once __DIR__ . '/config/header.php';
                class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
                 <i data-lucide="edit-3" class="w-4 h-4"></i> Editar
             </a>
+            <?php endif; ?>
         </div>
-        <?php endif; ?>
     </div>
 
     <!-- Header principal -->

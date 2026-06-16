@@ -11,6 +11,7 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/incidencias_helpers.php';
+require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
 
 requerir_login();
 
@@ -25,6 +26,16 @@ if (!$i || !puede_ver_incidencia($i)) {
 $adjuntos    = cargar_adjuntos($id);
 $comentarios = cargar_comentarios($id);
 $historial   = cargar_historial($id);
+
+// Costos
+$costos = costo_incidencia($id);
+$proveedor_nombre = null;
+if (!empty($i['proveedor_escalado_id'])) {
+    $prov = db_one("SELECT nombre, servicio FROM proveedores WHERE id = :id",
+                   ['id' => (int) $i['proveedor_escalado_id']]);
+    $proveedor_nombre = $prov['nombre'] ?? null;
+    $proveedor_servicio = $prov['servicio'] ?? null;
+}
 
 // Registrar la generación del PDF en auditoría
 registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i['folio']} a PDF");
@@ -217,6 +228,82 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
     <div class="mb-6">
         <h3 class="font-display text-sm font-bold text-zinc-700 uppercase tracking-wide mb-2 border-b border-zinc-200 pb-1">Solución aplicada</h3>
         <p class="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap"><?= e($i['solucion']) ?></p>
+    </div>
+    <?php endif; ?>
+
+    <!-- Costos -->
+    <?php if ($costos['tiene_costo'] || $proveedor_nombre || !empty($i['proveedor_externo_info'])): ?>
+    <div class="mb-6">
+        <h3 class="font-display text-sm font-bold text-zinc-700 uppercase tracking-wide mb-2 border-b border-zinc-200 pb-1">Costos de la incidencia</h3>
+
+        <?php if ($proveedor_nombre): ?>
+        <p class="text-sm text-zinc-700 mb-2">
+            <span class="text-[10px] text-zinc-500 uppercase font-bold">Atendido por proveedor:</span>
+            <strong><?= e($proveedor_nombre) ?></strong><?= !empty($proveedor_servicio) ? ' · ' . e($proveedor_servicio) : '' ?>
+        </p>
+        <?php elseif (!empty($i['proveedor_externo_info'])): ?>
+        <p class="text-sm text-zinc-700 mb-2">
+            <span class="text-[10px] text-zinc-500 uppercase font-bold">Atendido por:</span>
+            <?= e($i['proveedor_externo_info']) ?>
+        </p>
+        <?php else: ?>
+        <p class="text-sm text-zinc-700 mb-2">
+            <span class="text-[10px] text-zinc-500 uppercase font-bold">Atención:</span> Recursos internos
+        </p>
+        <?php endif; ?>
+
+        <?php
+        $ver_moi = puede_ver_mano_obra_interna();
+        $total_pdf = $ver_moi ? $costos['total'] : $costos['total_visible'];
+        ?>
+        <table class="w-full text-sm border border-zinc-200">
+            <tbody>
+                <?php if ($costos['mano_obra'] > 0): ?>
+                <tr class="border-b border-zinc-100">
+                    <td class="px-3 py-1.5 text-zinc-600">Mano de obra proveedor</td>
+                    <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['mano_obra'])) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($costos['materiales_proveedor'] > 0): ?>
+                <tr class="border-b border-zinc-100">
+                    <td class="px-3 py-1.5 text-zinc-600">Materiales del proveedor</td>
+                    <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['materiales_proveedor'])) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($costos['materiales_comprados'] > 0): ?>
+                <tr class="border-b border-zinc-100">
+                    <td class="px-3 py-1.5 text-zinc-600">Materiales comprados</td>
+                    <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['materiales_comprados'])) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($costos['refacciones'] > 0): ?>
+                <tr class="border-b border-zinc-100">
+                    <td class="px-3 py-1.5 text-zinc-600">Refacciones internas (stock)</td>
+                    <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['refacciones'])) ?></td>
+                </tr>
+                <?php endif; ?>
+                <?php if ($ver_moi && $costos['mano_obra_interna'] > 0): ?>
+                <tr class="border-b border-zinc-100">
+                    <td class="px-3 py-1.5 text-zinc-600">Mano de obra interna
+                        <?php if ($costos['horas_trabajadas'] > 0): ?>
+                        <span class="text-[10px] text-zinc-400">(<?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h × <?= e(fmt_dinero($costos['tarifa_aplicada'])) ?>/h)</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['mano_obra_interna'])) ?></td>
+                </tr>
+                <?php endif; ?>
+                <tr class="bg-zinc-50">
+                    <td class="px-3 py-2 font-bold text-zinc-900 uppercase text-xs tracking-wide">Total</td>
+                    <td class="px-3 py-2 text-right font-display font-extrabold text-base text-zinc-900"><?= e(fmt_dinero($total_pdf)) ?></td>
+                </tr>
+            </tbody>
+        </table>
+        <?php if ($costos['horas_trabajadas'] > 0): ?>
+        <p class="text-xs text-zinc-500 mt-1.5">Tiempo activo: <strong><?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h</strong></p>
+        <?php endif; ?>
+        <?php if (!empty($i['costo_notas'])): ?>
+        <p class="text-xs text-zinc-500 mt-1.5 italic"><?= e($i['costo_notas']) ?></p>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 

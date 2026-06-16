@@ -1,0 +1,839 @@
+{
+  "communities": {
+    "0": [
+      "config_comunicacion_helpers_crear_recordatorio",
+      "config_db",
+      "config_db_db",
+      "config_db_db_exec",
+      "config_db_db_last_id",
+      "config_herramientas_helpers",
+      "config_herramientas_helpers_actualizar_herramienta",
+      "config_herramientas_helpers_cambiar_estado_herramienta",
+      "config_herramientas_helpers_crear_herramienta",
+      "config_herramientas_helpers_eliminar_herramienta",
+      "config_herramientas_helpers_etiqueta_estado_herramienta",
+      "config_herramientas_helpers_listar_herramientas",
+      "config_herramientas_helpers_listar_prestamos_activos",
+      "config_herramientas_helpers_listar_prestamos_de_herramienta",
+      "config_herramientas_helpers_obtener_herramienta",
+      "config_herramientas_helpers_prestamos_vencidos",
+      "config_herramientas_helpers_registrar_devolucion",
+      "config_herramientas_helpers_registrar_prestamo",
+      "config_herramientas_helpers_stats_herramientas",
+      "config_herramientas_helpers_tipos_herramientas",
+      "config_importacion_helpers_registrar_importacion",
+      "config_incidencia_costos_helpers_crear_proveedor_rapido",
+      "config_incidencia_refacciones_helpers_devolver_refaccion_de_incidencia",
+      "config_incidencia_refacciones_helpers_registrar_refaccion_en_incidencia",
+      "config_mapa_helpers_crear_planta",
+      "config_refacciones_helpers",
+      "config_refacciones_helpers_actualizar_minimos_stock",
+      "config_refacciones_helpers_actualizar_refaccion",
+      "config_refacciones_helpers_agregar_compatibilidad",
+      "config_refacciones_helpers_categorias_refacciones",
+      "config_refacciones_helpers_crear_refaccion",
+      "config_refacciones_helpers_eliminar_compatibilidad",
+      "config_refacciones_helpers_eliminar_refaccion",
+      "config_refacciones_helpers_listar_compatibilidades_refaccion",
+      "config_refacciones_helpers_listar_movimientos_de_refaccion",
+      "config_refacciones_helpers_listar_movimientos_recientes",
+      "config_refacciones_helpers_listar_refacciones",
+      "config_refacciones_helpers_listar_stock_de_refaccion",
+      "config_refacciones_helpers_motivos_movimiento",
+      "config_refacciones_helpers_obtener_refaccion",
+      "config_refacciones_helpers_obtener_stock",
+      "config_refacciones_helpers_refacciones_compatibles_con_equipo",
+      "config_refacciones_helpers_refacciones_stock_bajo",
+      "config_refacciones_helpers_registrar_movimiento",
+      "config_refacciones_helpers_stats_almacen",
+      "config_refacciones_helpers_unidades_medida",
+      "pdo"
+    ],
+    "1": [
+      "api_tecnico_menos_cargado",
+      "config_db_db_all",
+      "config_incidencia_refacciones_helpers_listar_refacciones_de_incidencia",
+      "config_incidencia_refacciones_helpers_refacciones_frecuentes_equipo",
+      "config_incidencia_refacciones_helpers_stats_refacciones_incidencia",
+      "config_incidencias_helpers",
+      "config_incidencias_helpers_adjunto_detectar_mime",
+      "config_incidencias_helpers_buscar_reincidencias_similares",
+      "config_incidencias_helpers_cargar_adjuntos",
+      "config_incidencias_helpers_cargar_comentarios",
+      "config_incidencias_helpers_cargar_historial",
+      "config_incidencias_helpers_cargar_incidencias_relacionadas",
+      "config_incidencias_helpers_cat_areas",
+      "config_incidencias_helpers_cat_categorias_con_subs",
+      "config_incidencias_helpers_cat_equipos_de_sucursal",
+      "config_incidencias_helpers_cat_estados",
+      "config_incidencias_helpers_cat_origenes",
+      "config_incidencias_helpers_cat_severidades",
+      "config_incidencias_helpers_cat_sucursales",
+      "config_incidencias_helpers_cat_tecnicos",
+      "config_incidencias_helpers_cat_tipos_trabajo",
+      "config_incidencias_helpers_procesar_adjuntos",
+      "config_incidencias_helpers_registrar_diferencias",
+      "config_incidencias_helpers_registrar_historial",
+      "config_inteligencia_helpers",
+      "config_inteligencia_helpers_clasificar_problema_equipo",
+      "config_inteligencia_helpers_describir_regla",
+      "config_inteligencia_helpers_equipos_problematicos",
+      "config_inteligencia_helpers_evaluar_reglas_asignacion",
+      "config_inteligencia_helpers_extraer_palabras_clave",
+      "config_inteligencia_helpers_registrar_uso_regla",
+      "config_inteligencia_helpers_sugerir_plantillas_por_texto",
+      "config_inteligencia_helpers_sugerir_soluciones_por_texto",
+      "config_inteligencia_helpers_sugerir_tecnicos_expertos",
+      "config_reportes_helpers",
+      "config_reportes_helpers_comparativa_sucursales",
+      "config_reportes_helpers_csv_fila",
+      "config_reportes_helpers_csv_iniciar",
+      "config_reportes_helpers_distribucion_por_categoria",
+      "config_reportes_helpers_distribucion_por_severidad",
+      "config_reportes_helpers_metricas_generales",
+      "config_reportes_helpers_tendencia_diaria",
+      "config_reportes_helpers_top_areas",
+      "config_reportes_helpers_top_equipos",
+      "incidencia_refacciones"
+    ],
+    "2": [
+      "admin_auditoria",
+      "admin_auditoria_icono_accion",
+      "admin_auditoria_url_auditoria",
+      "admin_catalogos",
+      "admin_catalogos_render_lista_estados",
+      "admin_catalogos_render_lista_medidor_tipos",
+      "admin_catalogos_render_lista_origenes",
+      "admin_catalogos_render_lista_severidades",
+      "admin_catalogos_render_lista_simple_catalogo",
+      "bitacora",
+      "bitacora_sla_estado",
+      "bitacora_url_filtros",
+      "config_admin_helpers",
+      "config_admin_helpers_admin_toggle_activo",
+      "config_admin_helpers_colores_disponibles",
+      "config_admin_helpers_render_admin_header",
+      "config_admin_helpers_render_color_picker",
+      "config_admin_helpers_render_toggle",
+      "config_helpers",
+      "config_helpers_badge",
+      "config_helpers_color_avatar",
+      "config_helpers_csrf_input",
+      "config_helpers_csrf_token",
+      "config_helpers_csrf_valido",
+      "config_helpers_detectar_reincidencias",
+      "config_helpers_e",
+      "config_helpers_es_post",
+      "config_helpers_flash_get",
+      "config_helpers_flash_set",
+      "config_helpers_fmt_duracion",
+      "config_helpers_fmt_fecha",
+      "config_helpers_fmt_tiempo_relativo",
+      "config_helpers_generar_folio",
+      "config_helpers_iniciales",
+      "config_helpers_input",
+      "config_helpers_render_avatar",
+      "config_helpers_url",
+      "config_reportes_helpers_resolver_periodo"
+    ],
+    "3": [
+      "config_auth",
+      "config_auth_cambiar_password",
+      "config_auth_esta_logueado",
+      "config_auth_limpiar_sesion_invalida",
+      "config_auth_login",
+      "config_auth_logout",
+      "config_auth_registrar_auditoria",
+      "config_auth_requerir_login",
+      "config_auth_requerir_permiso",
+      "config_auth_tiene_permiso",
+      "config_auth_usuario_actual",
+      "config_equipos_helpers",
+      "config_equipos_helpers_badge_estado_vida",
+      "config_equipos_helpers_calcular_depreciacion",
+      "config_equipos_helpers_equipos_aniversario_mes",
+      "config_equipos_helpers_equipos_vida_util_critica",
+      "config_equipos_helpers_fmt_meses_humano",
+      "config_equipos_helpers_puede_administrar_equipos",
+      "config_equipos_helpers_puede_ver_equipo",
+      "config_incidencias_helpers_puede_editar_incidencia",
+      "config_incidencias_helpers_puede_ver_incidencia",
+      "config_reportes_helpers_resolver_filtro_sucursal",
+      "config_sesiones_helpers",
+      "config_sesiones_helpers_cerrar_sesion_actual",
+      "config_sesiones_helpers_cerrar_todas_sesiones_usuario",
+      "config_sesiones_helpers_detectar_dispositivo",
+      "config_sesiones_helpers_forzar_cierre_sesion",
+      "config_sesiones_helpers_icono_dispositivo",
+      "config_sesiones_helpers_listar_historial_sesiones",
+      "config_sesiones_helpers_listar_sesiones_activas",
+      "config_sesiones_helpers_obtener_ip_cliente",
+      "config_sesiones_helpers_registrar_sesion_activa",
+      "config_sesiones_helpers_sesion_sigue_activa"
+    ],
+    "4": [
+      "config_comunicacion_helpers",
+      "config_comunicacion_helpers_anuncios_visibles",
+      "config_comunicacion_helpers_contar_anuncios_no_leidos",
+      "config_comunicacion_helpers_contar_recordatorios_proximos",
+      "config_comunicacion_helpers_eliminar_recordatorio",
+      "config_comunicacion_helpers_extraer_menciones",
+      "config_comunicacion_helpers_listar_recordatorios_usuario",
+      "config_comunicacion_helpers_marcar_anuncio_leido",
+      "config_comunicacion_helpers_marcar_recordatorio_enviado",
+      "config_comunicacion_helpers_notificar_menciones",
+      "config_comunicacion_helpers_puede_administrar_anuncios",
+      "config_comunicacion_helpers_recordatorios_por_enviar",
+      "config_comunicacion_helpers_renderizar_menciones",
+      "config_comunicacion_helpers_resolver_menciones",
+      "config_comunicacion_helpers_toggle_reaccion_comentario",
+      "config_db_db_one",
+      "config_helpers_url_relativa",
+      "config_incidencias_helpers_cargar_incidencia",
+      "config_incidencias_helpers_recalcular_tiempos_incidencia",
+      "config_notificaciones_helpers",
+      "config_notificaciones_helpers_contar_no_leidas",
+      "config_notificaciones_helpers_crear_notificacion",
+      "config_notificaciones_helpers_listar_notificaciones",
+      "config_notificaciones_helpers_marcar_notificacion_leida",
+      "config_notificaciones_helpers_marcar_todas_leidas",
+      "config_notificaciones_helpers_notificar_asignacion",
+      "config_notificaciones_helpers_notificar_cambio_estado",
+      "config_notificaciones_helpers_notificar_comentario",
+      "config_notificaciones_helpers_notificar_critica_nueva",
+      "config_notificaciones_helpers_notificar_reincidencia"
+    ],
+    "5": [
+      "config_medidores_helpers",
+      "config_medidores_helpers_actualizar_medidor",
+      "config_medidores_helpers_actualizar_tipo_medidor",
+      "config_medidores_helpers_cambiar_estado_medidor",
+      "config_medidores_helpers_consumo_anomalo",
+      "config_medidores_helpers_consumo_por_tipo",
+      "config_medidores_helpers_consumo_resumen_periodo",
+      "config_medidores_helpers_consumo_tendencia",
+      "config_medidores_helpers_crear_medidor",
+      "config_medidores_helpers_crear_tipo_medidor",
+      "config_medidores_helpers_eliminar_lectura",
+      "config_medidores_helpers_fmt_consumo",
+      "config_medidores_helpers_fmt_lectura",
+      "config_medidores_helpers_lecturas_medidor",
+      "config_medidores_helpers_listar_medidores",
+      "config_medidores_helpers_listar_tipos_medidor",
+      "config_medidores_helpers_medidor_stats",
+      "config_medidores_helpers_medidor_sucursal_usuario",
+      "config_medidores_helpers_medidores_por_sucursal",
+      "config_medidores_helpers_obtener_lectura",
+      "config_medidores_helpers_obtener_medidor",
+      "config_medidores_helpers_obtener_tipo_medidor",
+      "config_medidores_helpers_puede_ver_medidor",
+      "config_medidores_helpers_registrar_lectura",
+      "config_medidores_helpers_tipo_medidor_en_uso",
+      "config_medidores_helpers_ultima_lectura"
+    ],
+    "6": [
+      "config_vault_helpers",
+      "config_vault_helpers_vault_actualizar_entrada",
+      "config_vault_helpers_vault_categorias_agrupadas",
+      "config_vault_helpers_vault_cifrar",
+      "config_vault_helpers_vault_clausula_permisos",
+      "config_vault_helpers_vault_crear_entrada",
+      "config_vault_helpers_vault_descifrar",
+      "config_vault_helpers_vault_eliminar_entrada",
+      "config_vault_helpers_vault_guardar_permisos",
+      "config_vault_helpers_vault_listar_categorias",
+      "config_vault_helpers_vault_listar_entradas",
+      "config_vault_helpers_vault_listar_historial",
+      "config_vault_helpers_vault_obtener_categoria",
+      "config_vault_helpers_vault_obtener_entrada",
+      "config_vault_helpers_vault_obtener_password",
+      "config_vault_helpers_vault_obtener_permisos",
+      "config_vault_helpers_vault_puede_administrar",
+      "config_vault_helpers_vault_registrar_acceso",
+      "config_vault_helpers_vault_registrar_historial",
+      "config_vault_helpers_vault_stats",
+      "config_vault_helpers_vault_toggle_favorito",
+      "config_vault_helpers_vault_usuario_puede_ver"
+    ],
+    "7": [
+      "config_importacion_helpers",
+      "config_importacion_helpers_csv_escape",
+      "config_importacion_helpers_generar_csv_ejemplo",
+      "config_importacion_helpers_importar_equipos",
+      "config_importacion_helpers_importar_incidencias",
+      "config_importacion_helpers_importar_usuarios",
+      "config_importacion_helpers_listar_importaciones",
+      "config_importacion_helpers_parsear_csv",
+      "config_importacion_helpers_resolver_area_id",
+      "config_importacion_helpers_resolver_categoria_id",
+      "config_importacion_helpers_resolver_estado_id",
+      "config_importacion_helpers_resolver_origen_id",
+      "config_importacion_helpers_resolver_rol_id",
+      "config_importacion_helpers_resolver_severidad_id",
+      "config_importacion_helpers_resolver_sucursal_id",
+      "config_importacion_helpers_resolver_tipo_trabajo_id",
+      "config_importacion_helpers_validar_columnas_csv"
+    ],
+    "8": [
+      "config_incidencia_costos_helpers",
+      "config_incidencia_costos_helpers_costo_incidencia",
+      "config_incidencia_costos_helpers_costos_mano_obra_por_tecnico",
+      "config_incidencia_costos_helpers_costos_por_sucursal",
+      "config_incidencia_costos_helpers_costos_ranking_incidencias",
+      "config_incidencia_costos_helpers_costos_ranking_proveedores",
+      "config_incidencia_costos_helpers_costos_resumen_periodo",
+      "config_incidencia_costos_helpers_costos_tendencia",
+      "config_incidencia_costos_helpers_fmt_dinero",
+      "config_incidencia_costos_helpers_fmt_dinero_corto",
+      "config_incidencia_costos_helpers_guardar_costos_incidencia",
+      "config_incidencia_costos_helpers_listar_proveedores_activos",
+      "config_incidencia_costos_helpers_puede_ver_mano_obra_interna",
+      "config_incidencia_costos_helpers_sql_costo_refacciones",
+      "config_incidencia_costos_helpers_sql_mano_obra_interna"
+    ],
+    "9": [
+      "config_backups_helpers",
+      "config_backups_helpers_backup_existe_en_disco",
+      "config_backups_helpers_backup_via_mysqldump",
+      "config_backups_helpers_backup_via_php",
+      "config_backups_helpers_comprimir_gzip",
+      "config_backups_helpers_detectar_mysqldump",
+      "config_backups_helpers_eliminar_backup",
+      "config_backups_helpers_fmt_bytes",
+      "config_backups_helpers_func_habilitada",
+      "config_backups_helpers_generar_backup",
+      "config_backups_helpers_limpiar_backups_viejos",
+      "config_backups_helpers_listar_backups",
+      "config_backups_helpers_obtener_config_db",
+      "config_backups_helpers_registrar_backup_en_bd"
+    ],
+    "10": [
+      "config_componentes_helpers",
+      "config_componentes_helpers_actualizar_componente",
+      "config_componentes_helpers_componentes_criticos",
+      "config_componentes_helpers_componentes_por_revisar",
+      "config_componentes_helpers_crear_componente",
+      "config_componentes_helpers_eliminar_componente",
+      "config_componentes_helpers_etiqueta_criticidad_componente",
+      "config_componentes_helpers_etiqueta_estado_componente",
+      "config_componentes_helpers_listar_componentes_de_equipo",
+      "config_componentes_helpers_listar_historial_componente",
+      "config_componentes_helpers_obtener_componente",
+      "config_componentes_helpers_registrar_historial_componente"
+    ],
+    "11": [
+      "config_organizacion_helpers",
+      "config_organizacion_helpers_agregar_palabra_clave",
+      "config_organizacion_helpers_archivar_incidencias_antiguas",
+      "config_organizacion_helpers_categoria_mas_probable",
+      "config_organizacion_helpers_contar_incidencias_archivables",
+      "config_organizacion_helpers_desarchivar_incidencia",
+      "config_organizacion_helpers_eliminar_palabra_clave",
+      "config_organizacion_helpers_listar_palabras_clave_de_categoria",
+      "config_organizacion_helpers_normalizar_texto",
+      "config_organizacion_helpers_stats_archivado",
+      "config_organizacion_helpers_stats_palabras_clave",
+      "config_organizacion_helpers_sugerir_categorias_por_texto"
+    ],
+    "12": [
+      "config_mapa_helpers",
+      "config_mapa_helpers_actualizar_posicion_equipo",
+      "config_mapa_helpers_color_pin_equipo",
+      "config_mapa_helpers_eliminar_planta",
+      "config_mapa_helpers_equipos_en_planta",
+      "config_mapa_helpers_equipos_sin_planta_en_sucursal",
+      "config_mapa_helpers_listar_plantas_de_sucursal",
+      "config_mapa_helpers_redimensionar_plano",
+      "config_mapa_helpers_renombrar_planta",
+      "config_mapa_helpers_subir_plano_planta"
+    ],
+    "13": [
+      "config_mantenimientos_helpers",
+      "config_mantenimientos_helpers_actualizar_estados_mantenimientos",
+      "config_mantenimientos_helpers_badge_estado_mant",
+      "config_mantenimientos_helpers_calcular_proxima_fecha",
+      "config_mantenimientos_helpers_fmt_recurrencia",
+      "config_mantenimientos_helpers_generar_siguiente_recurrente",
+      "config_mantenimientos_helpers_mantenimientos_vencidos",
+      "config_mantenimientos_helpers_proximos_mantenimientos",
+      "config_mantenimientos_helpers_puede_administrar_mantenimientos"
+    ],
+    "14": [
+      "api_sparklines_dashboard",
+      "api_sparklines_dashboard_rellenar_serie"
+    ],
+    "15": [
+      "incidencia_ver",
+      "incidencia_ver_calcular_sla_estado"
+    ],
+    "16": [
+      "lectura_nueva",
+      "lectura_nueva_subir_foto_lectura"
+    ],
+    "17": [
+      "root_setup",
+      "root_setup_msg"
+    ],
+    "18": [
+      "admin_anuncios"
+    ],
+    "19": [
+      "admin_archivar"
+    ],
+    "20": [
+      "admin_areas"
+    ],
+    "21": [
+      "admin_backups"
+    ],
+    "22": [
+      "admin_equipos"
+    ],
+    "23": [
+      "admin_importar"
+    ],
+    "24": [
+      "admin_importar_descargar_ejemplo"
+    ],
+    "25": [
+      "admin_importar_historial"
+    ],
+    "26": [
+      "admin_plantillas"
+    ],
+    "27": [
+      "admin_reglas_asignacion"
+    ],
+    "28": [
+      "admin_sucursales"
+    ],
+    "29": [
+      "admin_usuarios"
+    ],
+    "30": [
+      "almacen"
+    ],
+    "31": [
+      "api_anuncio_cerrar"
+    ],
+    "32": [
+      "api_avatar_subir"
+    ],
+    "33": [
+      "api_buscar_global"
+    ],
+    "34": [
+      "api_buscar_reincidencias"
+    ],
+    "35": [
+      "api_cambiar_tema"
+    ],
+    "36": [
+      "api_comentario_reaccionar"
+    ],
+    "37": [
+      "api_equipo_foto_eliminar"
+    ],
+    "38": [
+      "api_equipo_foto_portada"
+    ],
+    "39": [
+      "api_equipo_fotos_subir"
+    ],
+    "40": [
+      "api_equipo_posicion"
+    ],
+    "41": [
+      "api_equipo_transferir"
+    ],
+    "42": [
+      "api_equipos_de_sucursal"
+    ],
+    "43": [
+      "api_mantenimiento_convertir_incidencia"
+    ],
+    "44": [
+      "api_notificacion_marcar_leida"
+    ],
+    "45": [
+      "api_notificaciones_no_leidas"
+    ],
+    "46": [
+      "api_plantilla_usada"
+    ],
+    "47": [
+      "api_plantillas_listar"
+    ],
+    "48": [
+      "api_preview_equipo"
+    ],
+    "49": [
+      "api_preview_folio"
+    ],
+    "50": [
+      "api_proveedores_listar"
+    ],
+    "51": [
+      "api_sucursal_plano_subir"
+    ],
+    "52": [
+      "api_sugerencias_incidencia"
+    ],
+    "53": [
+      "api_sugerir_categoria"
+    ],
+    "54": [
+      "api_usuarios_buscar"
+    ],
+    "55": [
+      "api_vault_favorito"
+    ],
+    "56": [
+      "base_conocimiento"
+    ],
+    "57": [
+      "config_footer"
+    ],
+    "58": [
+      "config_header"
+    ],
+    "59": [
+      "cron_archivar_automatico"
+    ],
+    "60": [
+      "cron_backup_diario"
+    ],
+    "61": [
+      "cron_enviar_recordatorios"
+    ],
+    "62": [
+      "cron_notificar_mantenimientos"
+    ],
+    "63": [
+      "dashboard"
+    ],
+    "64": [
+      "diagnostico_logout"
+    ],
+    "65": [
+      "equipo_componentes"
+    ],
+    "66": [
+      "equipo_refacciones"
+    ],
+    "67": [
+      "equipo_ver"
+    ],
+    "68": [
+      "herramienta_ver"
+    ],
+    "69": [
+      "herramientas"
+    ],
+    "70": [
+      "herramientas_prestamo"
+    ],
+    "71": [
+      "incidencia_editar"
+    ],
+    "72": [
+      "incidencia_nueva"
+    ],
+    "73": [
+      "lecturas_captura"
+    ],
+    "74": [
+      "login"
+    ],
+    "75": [
+      "logout"
+    ],
+    "76": [
+      "mantenimiento_ver"
+    ],
+    "77": [
+      "mantenimientos"
+    ],
+    "78": [
+      "mapa_sucursal"
+    ],
+    "79": [
+      "medidor_ver"
+    ],
+    "80": [
+      "medidores"
+    ],
+    "81": [
+      "mi_perfil"
+    ],
+    "82": [
+      "notificaciones"
+    ],
+    "83": [
+      "proveedor_ver"
+    ],
+    "84": [
+      "proveedores"
+    ],
+    "85": [
+      "recordatorios"
+    ],
+    "86": [
+      "refaccion_ver"
+    ],
+    "87": [
+      "refacciones"
+    ],
+    "88": [
+      "refacciones_movimientos"
+    ],
+    "89": [
+      "reportes_incidencia_imprimir"
+    ],
+    "90": [
+      "reportes_mantenimiento"
+    ],
+    "91": [
+      "reportes_reporte_costos"
+    ],
+    "92": [
+      "reportes_reporte_mensual"
+    ],
+    "93": [
+      "reportes_reporte_reincidencias"
+    ],
+    "94": [
+      "reportes_reporte_sla"
+    ],
+    "95": [
+      "reportes_reporte_tecnicos"
+    ],
+    "96": [
+      "reportes_reportes"
+    ],
+    "97": [
+      "root_generar_datos_demo"
+    ],
+    "98": [
+      "vault"
+    ],
+    "99": [
+      "vault_entrada"
+    ]
+  },
+  "cohesion": {
+    "0": 0.06938020351526364,
+    "1": 0.07171717171717172,
+    "2": 0.08108108108108109,
+    "3": 0.10037878787878787,
+    "4": 0.11724137931034483,
+    "5": 0.09230769230769231,
+    "6": 0.1471861471861472,
+    "7": 0.19852941176470587,
+    "8": 0.21904761904761905,
+    "9": 0.25274725274725274,
+    "10": 0.21212121212121213,
+    "11": 0.21212121212121213,
+    "12": 0.2222222222222222,
+    "13": 0.25,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0,
+    "34": 1.0,
+    "35": 1.0,
+    "36": 1.0,
+    "37": 1.0,
+    "38": 1.0,
+    "39": 1.0,
+    "40": 1.0,
+    "41": 1.0,
+    "42": 1.0,
+    "43": 1.0,
+    "44": 1.0,
+    "45": 1.0,
+    "46": 1.0,
+    "47": 1.0,
+    "48": 1.0,
+    "49": 1.0,
+    "50": 1.0,
+    "51": 1.0,
+    "52": 1.0,
+    "53": 1.0,
+    "54": 1.0,
+    "55": 1.0,
+    "56": 1.0,
+    "57": 1.0,
+    "58": 1.0,
+    "59": 1.0,
+    "60": 1.0,
+    "61": 1.0,
+    "62": 1.0,
+    "63": 1.0,
+    "64": 1.0,
+    "65": 1.0,
+    "66": 1.0,
+    "67": 1.0,
+    "68": 1.0,
+    "69": 1.0,
+    "70": 1.0,
+    "71": 1.0,
+    "72": 1.0,
+    "73": 1.0,
+    "74": 1.0,
+    "75": 1.0,
+    "76": 1.0,
+    "77": 1.0,
+    "78": 1.0,
+    "79": 1.0,
+    "80": 1.0,
+    "81": 1.0,
+    "82": 1.0,
+    "83": 1.0,
+    "84": 1.0,
+    "85": 1.0,
+    "86": 1.0,
+    "87": 1.0,
+    "88": 1.0,
+    "89": 1.0,
+    "90": 1.0,
+    "91": 1.0,
+    "92": 1.0,
+    "93": 1.0,
+    "94": 1.0,
+    "95": 1.0,
+    "96": 1.0,
+    "97": 1.0,
+    "98": 1.0,
+    "99": 1.0
+  },
+  "gods": [
+    {
+      "id": "config_db_db_all",
+      "label": "db_all()",
+      "degree": 87
+    },
+    {
+      "id": "config_db_db_exec",
+      "label": "db_exec()",
+      "degree": 68
+    },
+    {
+      "id": "config_db_db_one",
+      "label": "db_one()",
+      "degree": 59
+    },
+    {
+      "id": "config_db_db_last_id",
+      "label": "db_last_id()",
+      "degree": 14
+    },
+    {
+      "id": "config_auth_usuario_actual",
+      "label": "usuario_actual()",
+      "degree": 10
+    },
+    {
+      "id": "config_auth_tiene_permiso",
+      "label": "tiene_permiso()",
+      "degree": 10
+    },
+    {
+      "id": "config_importacion_helpers_importar_incidencias",
+      "label": "importar_incidencias()",
+      "degree": 10
+    },
+    {
+      "id": "config_notificaciones_helpers_crear_notificacion",
+      "label": "crear_notificacion()",
+      "degree": 10
+    },
+    {
+      "id": "config_helpers_e",
+      "label": "e()",
+      "degree": 9
+    },
+    {
+      "id": "config_incidencia_refacciones_helpers_registrar_refaccion_en_incidencia",
+      "label": "registrar_refaccion_en_incidencia()",
+      "degree": 8
+    }
+  ],
+  "surprises": [
+    {
+      "source": "url_auditoria()",
+      "target": "url()",
+      "source_files": [
+        "admin/auditoria.php",
+        "config/helpers.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `url_auditoria()` unexpectedly reaches hub `url()`"
+    },
+    {
+      "source": "url_filtros()",
+      "target": "url()",
+      "source_files": [
+        "bitacora.php",
+        "config/helpers.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `url_filtros()` unexpectedly reaches hub `url()`"
+    },
+    {
+      "source": "render_lista_simple_catalogo()",
+      "target": "render_color_picker()",
+      "source_files": [
+        "admin/catalogos.php",
+        "config/admin_helpers.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "render_lista_simple_catalogo()",
+      "target": "csrf_input()",
+      "source_files": [
+        "admin/catalogos.php",
+        "config/helpers.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "render_lista_simple_catalogo()",
+      "target": "e()",
+      "source_files": [
+        "admin/catalogos.php",
+        "config/helpers.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}
