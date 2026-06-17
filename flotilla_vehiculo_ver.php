@@ -19,6 +19,12 @@ $es_admin        = tiene_permiso('administrar');
 $id = (int) input('id', 0);
 $vehiculo = $id > 0 ? flotilla_vehiculo($id) : null;
 
+if ($vehiculo && !flotilla_puede_ver_vehiculo($vehiculo)) {
+    flash_set('error', 'No tienes permiso para ver ese vehículo.');
+    header('Location: ' . url('flotilla_vehiculos.php'));
+    exit;
+}
+
 if (!$vehiculo) {
     $titulo_pagina = 'Vehículo no encontrado';
     require_once __DIR__ . '/config/header.php';

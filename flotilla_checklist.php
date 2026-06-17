@@ -96,7 +96,9 @@ if (es_post()) {
 }
 
 // Datos comunes
-$vehiculos   = db_all("SELECT id, placas, alias, marca, modelo FROM flotilla_vehiculos WHERE activo=1 AND estado != 'baja' ORDER BY alias, placas");
+$sid_forzado = flotilla_sucursal_forzada();
+$v_where = $sid_forzado ? "activo=1 AND estado != 'baja' AND sucursal_id=$sid_forzado" : "activo=1 AND estado != 'baja'";
+$vehiculos   = db_all("SELECT id, placas, alias, marca, modelo FROM flotilla_vehiculos WHERE $v_where ORDER BY alias, placas");
 $conductores = db_all("SELECT id, nombre_completo FROM flotilla_conductores WHERE activo=1 ORDER BY nombre_completo");
 
 // Ítems agrupados por categoría (campo texto directo)
@@ -139,6 +141,7 @@ if ($modo === 'ver' && $ver_id) {
 // Historial
 $historial = [];
 if ($modo === 'historial') {
+    $hist_where = $sid_forzado ? "WHERE v.sucursal_id = $sid_forzado" : "";
     $historial = db_all(
         "SELECT ch.*,
                 v.placas, v.alias, v.marca, v.modelo,
@@ -146,6 +149,7 @@ if ($modo === 'historial') {
          FROM flotilla_checklists ch
          INNER JOIN flotilla_vehiculos v ON ch.vehiculo_id = v.id
          LEFT  JOIN flotilla_conductores c ON ch.conductor_id = c.id
+         $hist_where
          ORDER BY ch.fecha DESC
          LIMIT 50"
     );

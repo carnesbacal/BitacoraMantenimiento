@@ -22,9 +22,15 @@ $f_estado    = (string) input('estado', '');
 $f_tipo      = (int) input('tipo_id', 0);
 $f_sucursal  = (int) input('sucursal_id', 0);
 
-if (!tiene_permiso('ver_todas_sucursales')) {
-    $f_sucursal = (int) $u['sucursal_id'];
+$ver_todas   = tiene_permiso('ver_todas_sucursales');
+$sid_forzado = flotilla_sucursal_forzada();
+if ($sid_forzado !== null) {
+    $f_sucursal = $sid_forzado;
 }
+
+$cat_sucursales = $ver_todas
+    ? db_all("SELECT id, nombre, codigo FROM sucursales WHERE activo=1 ORDER BY nombre")
+    : [];
 
 $filtros = [
     'q'          => $f_q        ?: null,
@@ -161,14 +167,53 @@ require_once __DIR__ . '/config/flotilla_nav.php';
 <div class="animate-fade-in space-y-5">
 
     <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-3">
+    <div class="flex flex-col <?= usuario_prefiere_radio_sucursal() ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-center' ?> lg:justify-between gap-3">
         <div class="flex items-center gap-3 flex-wrap">
             <h2 class="font-display text-2xl font-extrabold text-zinc-900 flex items-center gap-2">
                 <i data-lucide="car" class="w-6 h-6 text-bacal-700"></i>
                 Flotilla vehicular
             </h2>
+
+            <?php if ($ver_todas && usuario_prefiere_radio_sucursal()): ?>
+            <form method="GET" class="flex items-center gap-2 flex-wrap bg-white border border-zinc-300 rounded-lg px-3 py-1.5">
+                <?php foreach ($_GET as $k => $v) {
+                    if ($k === 'sucursal_id' || $k === 'p') continue;
+                    if ($v !== '' && $v !== '0') echo '<input type="hidden" name="'.e($k).'" value="'.e((string)$v).'">';
+                } ?>
+                <span class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Sucursal:</span>
+                <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                    <input type="radio" name="sucursal_id" value="" onchange="this.form.submit()"
+                           <?= $f_sucursal <= 0 ? 'checked' : '' ?> class="text-bacal-700 focus:ring-bacal-700">
+                    Todas
+                </label>
+                <?php foreach ($cat_sucursales as $s): ?>
+                <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+                    <input type="radio" name="sucursal_id" value="<?= $s['id'] ?>" onchange="this.form.submit()"
+                           <?= $f_sucursal == $s['id'] ? 'checked' : '' ?> class="text-bacal-700 focus:ring-bacal-700">
+                    <?= e($s['nombre']) ?>
+                </label>
+                <?php endforeach; ?>
+            </form>
+            <?php endif; ?>
         </div>
         <div class="flex items-center gap-2">
+            <?php if ($ver_todas && !usuario_prefiere_radio_sucursal()): ?>
+            <form method="GET" class="relative">
+                <?php foreach ($_GET as $k => $v) {
+                    if ($k === 'sucursal_id' || $k === 'p') continue;
+                    if ($v !== '' && $v !== '0') echo '<input type="hidden" name="'.e($k).'" value="'.e((string)$v).'">';
+                } ?>
+                <i data-lucide="store" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
+                <select name="sucursal_id" onchange="this.form.submit()"
+                        class="pl-9 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 focus:outline-none focus:border-bacal-700 appearance-none cursor-pointer">
+                    <option value="">Todas las sucursales</option>
+                    <?php foreach ($cat_sucursales as $s): ?>
+                    <option value="<?= $s['id'] ?>" <?= $f_sucursal == $s['id'] ? 'selected' : '' ?>><?= e($s['nombre']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"></i>
+            </form>
+            <?php endif; ?>
             <a href="<?= url('flotilla_conductores.php') ?>"
                class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
                 <i data-lucide="users" class="w-4 h-4"></i>

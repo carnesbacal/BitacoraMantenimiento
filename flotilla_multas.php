@@ -117,10 +117,12 @@ if (es_post() && $puede_gestionar) {
 }
 
 // Datos
+$sid_forzado = flotilla_sucursal_forzada();
 $where  = ['1=1'];
 $params = [];
 if ($f_vehiculo) { $where[] = 'm.vehiculo_id = :vid'; $params['vid'] = $f_vehiculo; }
 if ($f_estado)   { $where[] = 'm.estado = :est';      $params['est'] = $f_estado; }
+if ($sid_forzado){ $where[] = 'v.sucursal_id = :sid_f'; $params['sid_f'] = $sid_forzado; }
 $sql_where = implode(' AND ', $where);
 
 $multas = db_all(
@@ -139,10 +141,12 @@ $multas = db_all(
     $params
 );
 
-$vehiculos   = db_all("SELECT id, placas, alias, marca, modelo FROM flotilla_vehiculos WHERE activo=1 ORDER BY alias, placas");
+$v_where = $sid_forzado ? "activo=1 AND sucursal_id=$sid_forzado" : "activo=1";
+$vehiculos   = db_all("SELECT id, placas, alias, marca, modelo FROM flotilla_vehiculos WHERE $v_where ORDER BY alias, placas");
 $conductores = db_all("SELECT id, nombre_completo FROM flotilla_conductores WHERE activo=1 ORDER BY nombre_completo");
 
 // KPIs
+$kpi_sid = $sid_forzado ? " AND v.sucursal_id = $sid_forzado" : "";
 $kpis = db_one(
     "SELECT
         SUM(m.estado IN('pendiente','impugnada'))  pendientes,
@@ -151,7 +155,7 @@ $kpis = db_one(
         COALESCE(SUM(CASE WHEN m.estado IN('pendiente','impugnada') THEN m.monto_original END),0)          total_pendiente
      FROM flotilla_multas m
      INNER JOIN flotilla_vehiculos v ON m.vehiculo_id = v.id
-     WHERE v.activo = 1" . ($f_vehiculo ? " AND m.vehiculo_id = $f_vehiculo" : "")
+     WHERE v.activo = 1$kpi_sid" . ($f_vehiculo ? " AND m.vehiculo_id = $f_vehiculo" : "")
 );
 
 $titulo_pagina = 'Flotilla · Multas';

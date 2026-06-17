@@ -6,6 +6,30 @@
  */
 
 // ----------------------------------------------------------------------------
+// SEGURIDAD POR SUCURSAL
+// ----------------------------------------------------------------------------
+
+/**
+ * Retorna el sucursal_id al que el usuario está restringido, o null si puede ver todo.
+ */
+function flotilla_sucursal_forzada(): ?int {
+    if (tiene_permiso('ver_todas_sucursales')) return null;
+    $u = usuario_actual();
+    $sid = (int) ($u['sucursal_id'] ?? 0);
+    return $sid > 0 ? $sid : null;
+}
+
+/**
+ * Verifica si el usuario puede ver un vehículo cargado.
+ * Redirige con flash si no tiene acceso.
+ */
+function flotilla_puede_ver_vehiculo(array $vehiculo): bool {
+    $forzada = flotilla_sucursal_forzada();
+    if ($forzada === null) return true;
+    return (int) $vehiculo['sucursal_id'] === $forzada;
+}
+
+// ----------------------------------------------------------------------------
 // VEHÍCULOS
 // ----------------------------------------------------------------------------
 
