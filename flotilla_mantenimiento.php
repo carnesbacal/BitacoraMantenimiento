@@ -1,0 +1,640 @@
+<?php
+/**
+ * ============================================================================
+ * flotilla_mantenimiento.php - Mantenimiento preventivo y correctivo
+ * ============================================================================
+ */
+require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/config/auth.php';
+require_once __DIR__ . '/config/helpers.php';
+require_once __DIR__ . '/config/flotilla_helpers.php';
+
+requerir_login();
+$u = usuario_actual();
+$puede_gestionar = tiene_permiso('administrar') || tiene_permiso('resolver');
+
+$f_vehiculo_id = (int) input('vehiculo_id', 0);
+$f_vista       = (string) input('vista', 'pendientes'); // pendientes | historial
+$f_sucursal    = (int) input('sucursal_id', 0);
+
+if (!tiene_permiso('ver_todas_sucursales')) {
+    $f_sucursal = (int) $u['sucursal_id'];
+}
+
+$errores = [];
+
+// ----------------------------------------------------------------------------
+// POST
+// ----------------------------------------------------------------------------
+if (es_post() && $puede_gestionar) {
+    if (!csrf_valido(input('_csrf'))) {
+        $errores[] = 'Token de seguridad inválido.';
+    } else {
+        $op = (string) input('op', '');
+
+        if ($op === 'registrar') {
+            $vid         = (int) input('vehiculo_id', 0);
+            $programa_id = (int) input('programa_id', 0) ?: null;
+            $nombre      = trim((string) input('nombre', ''));
+            $descripcion = trim((string) input('descripcion', '')) ?: null;
+            $fecha       = trim((string) input('fecha', ''));
+            $km_odo      = (int) input('km_odometro', 0);
+            $taller      = trim((string) input('taller', '')) ?: null;
+            $tecnico     = trim((string) input('tecnico', '')) ?: null;
+            $costo       = (float) input('costo', 0) ?: null;
+            $num_orden   = trim((string) input('numero_orden', '')) ?: null;
+            $prox_km     = (int) input('proximo_km', 0) ?: null;
+            $prox_fecha  = trim((string) input('proxima_fecha', '')) ?: null;
+            $notas       = trim((string) input('notas', '')) ?: null;
+
+            if (!$vid)    $errores[] = 'Selecciona un vehículo.';
+            if (!$nombre) $errores[] = 'El nombre del mantenimiento es obligatorio.';
+            if (!$fecha)  $errores[] = 'La fecha es obligatoria.';
+            if ($km_odo <= 0) $errores[] = 'El km del odómetro es obligatorio.';
+
+            if (empty($errores)) {
+                try {
+                    db_exec(
+                        "INSERT INTO flotilla_mant_historial
+                            (vehiculo_id, programa_id, nombre, descripcion, fecha, km_odometro,
+                             taller, tecnico, costo, numero_orden,
+                             proximo_km, proxima_fecha, notas, creado_por)
+                         VALUES
+                            (:vid, :prog, :nombre, :desc, :fecha, :km,
+                             :taller, :tecnico, :costo, :orden,
+                             :prox_km, :prox_fecha, :notas, :cp)",
+                        [
+                            'vid'        => $vid,
+                            'prog'       => $programa_id,
+                            'nombre'     => $nombre,
+                            'desc'       => $descripcion,
+                            'fecha'      => $fecha,
+                            'km'         => $km_odo,
+                            'taller'     => $taller,
+                            'tecnico'    => $tecnico,
+                            'costo'      => $costo,
+                            'orden'      => $num_orden,
+                            'prox_km'    => $prox_km,
+                            'prox_fecha' => $prox_fecha,
+                            'notas'      => $notas,
+                            'cp'         => $u['id'],
+                        ]
+                    );
+                    $mant_id = db_last_id();
+
+                    // Actualizar km_actual del vehículo si es mayor
+                    $veh = db_one("SELECT km_actual FROM flotilla_vehiculos WHERE id = :id", ['id' => $vid]);
+                    if ($veh && $km_odo > $veh['km_actual']) {
+                        db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id",
+                            ['km' => $km_odo, 'id' => $vid]);
+                    }
+
+                    // Crear gasto automático si hay costo
+                    if ($costo > 0) {
+                        $cat = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre = 'Mantenimiento' LIMIT 1");
+                        if ($cat) {
+                            db_exec(
+                                "INSERT INTO flotilla_gastos
+                                    (vehiculo_id, categoria_id, fecha, concepto, monto,
+                                     proveedor, numero_factura, km_odometro, creado_por)
+                                 VALUES (:vid, :cat, :fecha, :concepto, :monto,
+                                         :prov, :factura, :km, :cp)",
+                                [
+                                    'vid'      => $vid,
+                                    'cat'      => $cat['id'],
+                                    'fecha'    => $fecha,
+                                    'concepto' => $nombre . ($taller ? " – {$taller}" : ''),
+                                    'monto'    => $costo,
+                                    'prov'     => $taller,
+                                    'factura'  => $num_orden,
+                                    'km'       => $km_odo,
+                                    'cp'       => $u['id'],
+                                ]
+                            );
+                        }
+                    }
+
+                    registrar_auditoria('registrar_mantenimiento', 'flotilla_mant_historial', $mant_id,
+                        "Vehículo ID {$vid}: {$nombre}");
+                    flash_set('exito', 'Mantenimiento registrado correctamente.');
+                    header('Location: ' . url("flotilla_mantenimiento.php?vehiculo_id={$vid}&vista=historial"));
+                    exit;
+                } catch (Throwable $e) {
+                    $errores[] = 'Error: ' . $e->getMessage();
+                }
+            }
+        }
+
+        if ($op === 'eliminar' && tiene_permiso('administrar')) {
+            $del_id = (int) input('del_id', 0);
+            db_exec("DELETE FROM flotilla_mant_historial WHERE id = :id", ['id' => $del_id]);
+            flash_set('exito', 'Registro eliminado.');
+            header('Location: ' . url("flotilla_mantenimiento.php?vehiculo_id={$f_vehiculo_id}&vista=historial"));
+            exit;
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Cargar datos
+// ----------------------------------------------------------------------------
+$vehiculos = db_all(
+    "SELECT v.id, v.alias, v.marca, v.modelo, v.placas, v.km_actual
+       FROM flotilla_vehiculos v
+      WHERE v.activo = 1"
+    . ($f_sucursal ? " AND v.sucursal_id = {$f_sucursal}" : '')
+    . " ORDER BY v.alias, v.placas"
+);
+
+$programas = db_all("SELECT * FROM flotilla_mant_programas WHERE activo=1 ORDER BY nombre");
+
+// KPIs globales
+$kpi_vencidos = (int)(db_one(
+    "SELECT COUNT(DISTINCT h.vehiculo_id) n
+       FROM flotilla_mant_historial h
+      WHERE h.proxima_fecha IS NOT NULL AND h.proxima_fecha < CURDATE()"
+    . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
+)['n'] ?? 0);
+
+$kpi_proximos = (int)(db_one(
+    "SELECT COUNT(*) n
+       FROM flotilla_mant_historial h
+      WHERE h.proxima_fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+    . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
+)['n'] ?? 0);
+
+$kpi_historial = (int)(db_one(
+    "SELECT COUNT(*) n FROM flotilla_mant_historial h WHERE YEAR(h.fecha) = YEAR(CURDATE())"
+    . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
+)['n'] ?? 0);
+
+$kpi_costo_anio = (float)(db_one(
+    "SELECT COALESCE(SUM(h.costo),0) n FROM flotilla_mant_historial h WHERE YEAR(h.fecha) = YEAR(CURDATE())"
+    . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
+)['n'] ?? 0);
+
+// Vehículos con mantenimiento pendiente (por fecha o km)
+$pendientes = db_all(
+    "SELECT h.id, h.nombre, h.proxima_fecha, h.proximo_km, h.fecha ultima_fecha,
+            v.id vehiculo_id, v.alias, v.marca, v.modelo, v.placas, v.km_actual,
+            DATEDIFF(h.proxima_fecha, CURDATE()) dias_restantes,
+            (h.proximo_km - v.km_actual) km_restantes
+       FROM flotilla_mant_historial h
+       INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+      WHERE v.activo = 1
+        AND (h.proxima_fecha IS NOT NULL OR h.proximo_km IS NOT NULL)
+        AND h.id = (
+            SELECT h2.id FROM flotilla_mant_historial h2
+             WHERE h2.vehiculo_id = h.vehiculo_id AND h2.nombre = h.nombre
+             ORDER BY h2.fecha DESC LIMIT 1
+        )"
+    . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
+    . ($f_sucursal ? " AND v.sucursal_id = {$f_sucursal}" : '')
+    . " ORDER BY h.proxima_fecha ASC, km_restantes ASC
+       LIMIT 100"
+);
+
+// Historial
+$where_h  = ['1=1'];
+$params_h = [];
+if ($f_vehiculo_id) {
+    $where_h[]        = 'h.vehiculo_id = :vid';
+    $params_h['vid']  = $f_vehiculo_id;
+}
+if ($f_sucursal) {
+    $where_h[]        = 'v.sucursal_id = :sid';
+    $params_h['sid']  = $f_sucursal;
+}
+$sql_where_h = implode(' AND ', $where_h);
+
+$historial = db_all(
+    "SELECT h.*, v.alias, v.marca, v.modelo, v.placas,
+            p.nombre programa_nombre
+       FROM flotilla_mant_historial h
+       INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+       LEFT  JOIN flotilla_mant_programas p ON h.programa_id = p.id
+      WHERE $sql_where_h
+      ORDER BY h.fecha DESC, h.id DESC
+      LIMIT 200",
+    $params_h
+);
+
+$titulo_pagina = 'Flotilla · Mantenimiento';
+$pagina_activa = 'flotilla_mantenimiento';
+require_once __DIR__ . '/config/header.php';
+require_once __DIR__ . '/config/flotilla_nav.php';
+?>
+
+<div class="animate-fade-in space-y-5">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="font-display text-2xl font-extrabold text-zinc-900 flex items-center gap-2">
+            <i data-lucide="wrench" class="w-6 h-6 text-bacal-700"></i>
+            Mantenimiento
+        </h2>
+        <?php if ($puede_gestionar): ?>
+        <button onclick="document.getElementById('modal-nuevo-mant').classList.remove('hidden')"
+                class="px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold flex items-center gap-1.5">
+            <i data-lucide="plus" class="w-4 h-4"></i> Registrar mantenimiento
+        </button>
+        <?php endif; ?>
+    </div>
+
+    <!-- Flash / Errores -->
+    <?php foreach (flash_get() as $tipo => $msg): ?>
+    <div class="px-4 py-3 rounded-lg text-sm font-medium
+        <?= $tipo === 'exito' ? 'bg-emerald-50 border border-emerald-300 text-emerald-800' : 'bg-red-50 border border-red-300 text-red-800' ?>">
+        <?= e($msg) ?>
+    </div>
+    <?php endforeach; ?>
+    <?php if ($errores): ?>
+    <div class="px-4 py-3 rounded-lg bg-red-50 border border-red-300 text-sm text-red-800">
+        <?php foreach ($errores as $err): ?><div>✗ <?= e($err) ?></div><?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- KPIs -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <?php
+        $kpis_data = [
+            ['Vencidos',       $kpi_vencidos,                                     'alert-triangle',   'red'],
+            ['Próx. 30 días',  $kpi_proximos,                                     'clock',            'amber'],
+            ['Este año',       $kpi_historial,                                    'clipboard-list',   'blue'],
+            ['Costo (año)',    '$' . number_format($kpi_costo_anio, 2),           'banknote',         'emerald'],
+        ];
+        foreach ($kpis_data as [$label, $val, $icon, $color]):
+            $alert = $color === 'red' && (int)$val > 0;
+        ?>
+        <div class="bg-white rounded-xl border <?= $alert ? 'border-red-200 bg-red-50' : 'border-zinc-200' ?> p-4">
+            <div class="flex items-center justify-between mb-2">
+                <i data-lucide="<?= $icon ?>" class="w-5 h-5 text-<?= $color ?>-500"></i>
+                <span class="font-display text-xl font-extrabold <?= $alert ? 'text-red-700' : 'text-zinc-900' ?>"><?= $val ?></span>
+            </div>
+            <div class="text-[11px] uppercase tracking-wide font-bold text-zinc-500"><?= $label ?></div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- Filtros + toggle vista -->
+    <div class="bg-white rounded-xl border border-zinc-200 p-3 flex flex-wrap gap-2 items-end justify-between">
+        <form method="GET" class="flex flex-wrap gap-2 items-end">
+            <input type="hidden" name="vista" value="<?= e($f_vista) ?>">
+            <div class="flex-1 min-w-[180px]">
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Vehículo</label>
+                <select name="vehiculo_id" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+                    <option value="">Todos los vehículos</option>
+                    <?php foreach ($vehiculos as $vv): ?>
+                    <option value="<?= $vv['id'] ?>" <?= $f_vehiculo_id === (int)$vv['id'] ? 'selected' : '' ?>>
+                        <?= $vv['alias'] ? e($vv['alias']) . ' – ' : '' ?><?= e($vv['placas']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </form>
+
+        <!-- Toggle Pendientes / Historial -->
+        <div class="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 shadow-sm self-end">
+            <?php
+            $vistas = ['pendientes' => ['clock', 'Pendientes'], 'historial' => ['history', 'Historial']];
+            foreach ($vistas as $vk => [$vico, $vlabel]):
+                $qs = ['vista' => $vk];
+                if ($f_vehiculo_id) $qs['vehiculo_id'] = $f_vehiculo_id;
+            ?>
+            <a href="<?= url('flotilla_mantenimiento.php?' . http_build_query($qs)) ?>"
+               class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors
+                      <?= $f_vista === $vk ? 'bg-bacal-700 text-white' : 'text-zinc-600 hover:bg-zinc-100' ?>">
+                <i data-lucide="<?= $vico ?>" class="w-4 h-4"></i> <?= $vlabel ?>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php if ($f_vista === 'pendientes'): ?>
+    <!-- ── Vista: Pendientes ── -->
+    <?php if (empty($pendientes)): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 py-16 text-center">
+        <i data-lucide="check-circle" class="w-12 h-12 mx-auto text-emerald-300 mb-3"></i>
+        <p class="font-semibold text-zinc-700">Sin mantenimientos pendientes</p>
+        <p class="text-sm text-zinc-500 mt-1">Todos los vehículos están al día.</p>
+    </div>
+    <?php else: ?>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <?php foreach ($pendientes as $p):
+            $dias = $p['proxima_fecha'] ? (int)$p['dias_restantes'] : null;
+            $kms  = $p['proximo_km']   ? (int)$p['km_restantes']   : null;
+            $vencido_fecha = $dias !== null && $dias < 0;
+            $vencido_km    = $kms !== null && $kms < 0;
+            $urgente       = $vencido_fecha || $vencido_km || ($dias !== null && $dias <= 7) || ($kms !== null && $kms <= 500);
+            $pronto        = !$urgente && (($dias !== null && $dias <= 30) || ($kms !== null && $kms <= 2000));
+            $color = $urgente ? 'red' : ($pronto ? 'amber' : 'zinc');
+        ?>
+        <div class="bg-white rounded-xl border border-<?= $color ?>-<?= $urgente ? '300' : '200' ?> shadow-sm p-4 space-y-3">
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <div class="font-semibold text-zinc-900"><?= e($p['nombre']) ?></div>
+                    <div class="text-xs text-zinc-500 mt-0.5 font-mono">
+                        <?= $p['alias'] ? e($p['alias']) . ' · ' : '' ?><?= e($p['placas']) ?>
+                    </div>
+                </div>
+                <?php if ($urgente): ?>
+                <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-bold">
+                    <i data-lucide="alert-circle" class="w-3 h-3"></i> Vencido
+                </span>
+                <?php elseif ($pronto): ?>
+                <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+                    <i data-lucide="clock" class="w-3 h-3"></i> Próximo
+                </span>
+                <?php endif; ?>
+            </div>
+
+            <div class="flex flex-wrap gap-3 text-xs">
+                <?php if ($p['proxima_fecha']): ?>
+                <div class="flex items-center gap-1 <?= $vencido_fecha ? 'text-red-600 font-semibold' : 'text-zinc-600' ?>">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+                    <?= fmt_fecha($p['proxima_fecha']) ?>
+                    <?php if ($dias !== null): ?>
+                    <span class="ml-1 <?= $vencido_fecha ? 'text-red-600' : 'text-zinc-400' ?>">
+                        (<?= $dias < 0 ? abs($dias) . ' días atrás' : "en {$dias} días" ?>)
+                    </span>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+                <?php if ($p['proximo_km']): ?>
+                <div class="flex items-center gap-1 <?= $vencido_km ? 'text-red-600 font-semibold' : 'text-zinc-600' ?>">
+                    <i data-lucide="gauge" class="w-3.5 h-3.5"></i>
+                    <?= number_format($p['proximo_km']) ?> km
+                    <?php if ($kms !== null): ?>
+                    <span class="ml-1 <?= $vencido_km ? 'text-red-600' : 'text-zinc-400' ?>">
+                        (<?= $kms < 0 ? number_format(abs($kms)) . ' km excedido' : number_format($kms) . ' km restantes' ?>)
+                    </span>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="text-xs text-zinc-400">
+                Último: <?= $p['ultima_fecha'] ? fmt_fecha($p['ultima_fecha']) : '—' ?> ·
+                Km actual: <span class="font-mono"><?= number_format($p['km_actual']) ?></span>
+            </div>
+
+            <?php if ($puede_gestionar): ?>
+            <button onclick="abrirModalMant(<?= $p['vehiculo_id'] ?>, '<?= e(addslashes($p['nombre'])) ?>')"
+                    class="w-full px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i> Registrar como realizado
+            </button>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php else: ?>
+    <!-- ── Vista: Historial ── -->
+    <?php if (empty($historial)): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 py-16 text-center">
+        <i data-lucide="clipboard-list" class="w-12 h-12 mx-auto text-zinc-300 mb-3"></i>
+        <p class="font-semibold text-zinc-700">Sin historial de mantenimientos</p>
+        <p class="text-sm text-zinc-500 mt-1">Registra el primer mantenimiento para empezar el seguimiento.</p>
+    </div>
+    <?php else: ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-zinc-50 border-b border-zinc-200">
+                    <tr>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Fecha</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Servicio</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Vehículo</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">Km</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Taller</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Costo</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Próximo</th>
+                        <th class="px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    <?php foreach ($historial as $h): ?>
+                    <tr class="hover:bg-zinc-50 transition-colors">
+                        <td class="px-4 py-3 whitespace-nowrap text-zinc-700"><?= fmt_fecha($h['fecha']) ?></td>
+                        <td class="px-4 py-3">
+                            <div class="font-semibold text-zinc-900"><?= e($h['nombre']) ?></div>
+                            <?php if ($h['programa_nombre']): ?>
+                            <div class="text-xs text-zinc-400"><?= e($h['programa_nombre']) ?></div>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="font-semibold text-zinc-900">
+                                <?= $h['alias'] ? e($h['alias']) . ' · ' : '' ?><?= e($h['marca']) ?> <?= e($h['modelo']) ?>
+                            </div>
+                            <div class="text-xs text-zinc-500 font-mono"><?= e($h['placas']) ?></div>
+                        </td>
+                        <td class="px-4 py-3 hidden md:table-cell text-right font-mono text-zinc-600">
+                            <?= number_format($h['km_odometro']) ?>
+                        </td>
+                        <td class="px-4 py-3 hidden lg:table-cell text-zinc-600"><?= $h['taller'] ? e($h['taller']) : '—' ?></td>
+                        <td class="px-4 py-3 text-right font-semibold text-zinc-900">
+                            <?= $h['costo'] ? '$' . number_format((float)$h['costo'], 2) : '—' ?>
+                        </td>
+                        <td class="px-4 py-3 hidden lg:table-cell text-xs">
+                            <?php if ($h['proxima_fecha'] || $h['proximo_km']): ?>
+                            <div class="text-zinc-600">
+                                <?= $h['proxima_fecha'] ? fmt_fecha($h['proxima_fecha']) : '' ?>
+                                <?= $h['proximo_km'] ? ' · ' . number_format($h['proximo_km']) . ' km' : '' ?>
+                            </div>
+                            <?php else: ?>
+                            <span class="text-zinc-400">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <?php if ($puede_gestionar): ?>
+                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este registro?')">
+                                <?= csrf_input() ?>
+                                <input type="hidden" name="op" value="eliminar">
+                                <input type="hidden" name="del_id" value="<?= $h['id'] ?>">
+                                <button type="submit" class="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
+    <?php endif; ?>
+</div>
+
+<!-- ============================================================ -->
+<!-- Modal: Registrar mantenimiento                               -->
+<!-- ============================================================ -->
+<div id="modal-nuevo-mant" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50" onclick="this.parentElement.classList.add('hidden')"></div>
+    <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
+                <i data-lucide="wrench" class="w-4 h-4 text-bacal-700"></i>
+                Registrar mantenimiento
+            </h3>
+            <button type="button" onclick="document.getElementById('modal-nuevo-mant').classList.add('hidden')"
+                    class="text-zinc-400 hover:text-zinc-600 p-1 rounded">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form method="POST" class="p-6 space-y-4">
+            <?= csrf_input() ?>
+            <input type="hidden" name="op" value="registrar">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Vehículo <span class="text-red-500">*</span></label>
+                    <select name="vehiculo_id" id="mant_vehiculo" required
+                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        <option value="">Seleccionar vehículo…</option>
+                        <?php foreach ($vehiculos as $vv): ?>
+                        <option value="<?= $vv['id'] ?>" <?= $f_vehiculo_id === (int)$vv['id'] ? 'selected' : '' ?>
+                                data-km="<?= $vv['km_actual'] ?>">
+                            <?= $vv['alias'] ? e($vv['alias']) . ' – ' : '' ?><?= e($vv['placas']) ?>
+                            (<?= e($vv['marca']) ?> <?= e($vv['modelo']) ?>)
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Tipo de servicio</label>
+                    <select name="programa_id" id="mant_programa"
+                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        <option value="">Otro / libre</option>
+                        <?php foreach ($programas as $pg): ?>
+                        <option value="<?= $pg['id'] ?>" data-nombre="<?= e($pg['nombre']) ?>">
+                            <?= e($pg['nombre']) ?>
+                            <?= $pg['intervalo_km'] ? ' (c/' . number_format($pg['intervalo_km']) . ' km)' : '' ?>
+                            <?= $pg['intervalo_dias'] ? ' / ' . $pg['intervalo_dias'] . ' días' : '' ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Nombre del servicio <span class="text-red-500">*</span></label>
+                    <input type="text" name="nombre" id="mant_nombre" required maxlength="100"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500"
+                           placeholder="Ej: Cambio de aceite, revisión de frenos…">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Fecha <span class="text-red-500">*</span></label>
+                    <input type="date" name="fecha" required value="<?= date('Y-m-d') ?>"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Km odómetro <span class="text-red-500">*</span></label>
+                    <input type="number" name="km_odometro" id="mant_km" required min="0"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Taller / Proveedor</label>
+                    <input type="text" name="taller" maxlength="100"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Técnico</label>
+                    <input type="text" name="tecnico" maxlength="100"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Costo</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                        <input type="number" name="costo" min="0" step="0.01"
+                               class="w-full pl-6 pr-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500"
+                               placeholder="0.00">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">No. orden de servicio</label>
+                    <input type="text" name="numero_orden" maxlength="60"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+
+                <div class="sm:col-span-2 border-t border-zinc-100 pt-3">
+                    <p class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Programar próximo mantenimiento</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-700 mb-1">Próxima fecha</label>
+                            <input type="date" name="proxima_fecha"
+                                   class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-700 mb-1">Próximo km</label>
+                            <input type="number" name="proximo_km" id="mant_prox_km" min="0"
+                                   class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Descripción / notas</label>
+                    <textarea name="notas" rows="2"
+                              class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500"
+                              placeholder="Observaciones, piezas reemplazadas, etc."></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2 border-t border-zinc-100">
+                <button type="button" onclick="document.getElementById('modal-nuevo-mant').classList.add('hidden')"
+                        class="px-4 py-2 rounded-lg border border-zinc-300 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
+                    Cancelar
+                </button>
+                <button type="submit"
+                        class="px-5 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold">
+                    Guardar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Auto-rellenar nombre al seleccionar tipo de programa
+document.getElementById('mant_programa')?.addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var nom = document.getElementById('mant_nombre');
+    if (nom && opt.dataset.nombre) nom.value = opt.dataset.nombre;
+});
+
+// Auto-rellenar km al seleccionar vehículo
+document.getElementById('mant_vehiculo')?.addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var km  = opt.dataset.km;
+    var kmInput = document.getElementById('mant_km');
+    if (kmInput && km && !kmInput.value) kmInput.value = km;
+});
+
+// Abrir modal con vehículo y nombre pre-cargado (desde tarjetas de pendientes)
+function abrirModalMant(vid, nombre) {
+    var sel = document.getElementById('mant_vehiculo');
+    if (sel) sel.value = vid;
+    var nm  = document.getElementById('mant_nombre');
+    if (nm)  nm.value  = nombre;
+    // Trigger change para km
+    var opt = sel?.options[sel?.selectedIndex];
+    var km  = opt?.dataset?.km;
+    var kmInput = document.getElementById('mant_km');
+    if (kmInput && km) kmInput.value = km;
+    document.getElementById('modal-nuevo-mant').classList.remove('hidden');
+}
+</script>
+
+<?php require_once __DIR__ . '/config/footer.php'; ?>

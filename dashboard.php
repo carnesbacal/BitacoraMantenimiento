@@ -328,6 +328,74 @@ if ($sin_actualizar > 0) {
         'enlace' => url('bitacora.php?sin_actualizar=1')];
 }
 
+// ── Alertas de Flotilla ────────────────────────────────────────────────────
+$flotilla_docs_vencidos = (int)(db_one(
+    "SELECT COUNT(*) c FROM flotilla_documentos d
+     LEFT JOIN flotilla_vehiculos v ON d.vehiculo_id = v.id
+     WHERE d.estado = 'vencido'"
+    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
+)['c'] ?? 0);
+if ($flotilla_docs_vencidos > 0) {
+    $alertas[] = ['tipo' => 'critica', 'icono' => 'file-x',
+        'titulo' => "{$flotilla_docs_vencidos} documento(s) de flotilla vencido(s)",
+        'mensaje' => 'Seguros, tenencias o permisos que requieren renovación.',
+        'enlace' => url('flotilla_documentos.php?estado=vencido')];
+}
+
+$flotilla_docs_por_vencer = (int)(db_one(
+    "SELECT COUNT(*) c FROM flotilla_documentos d
+     LEFT JOIN flotilla_vehiculos v ON d.vehiculo_id = v.id
+     WHERE d.estado = 'por_vencer'"
+    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
+)['c'] ?? 0);
+if ($flotilla_docs_por_vencer > 0) {
+    $alertas[] = ['tipo' => 'warning', 'icono' => 'file-clock',
+        'titulo' => "{$flotilla_docs_por_vencer} documento(s) de flotilla por vencer",
+        'mensaje' => 'Próximos a vencer según días de alerta configurados.',
+        'enlace' => url('flotilla_documentos.php?estado=por_vencer')];
+}
+
+$flotilla_multas = db_one(
+    "SELECT COUNT(*) c, COALESCE(SUM(m.monto_original),0) monto
+     FROM flotilla_multas m
+     LEFT JOIN flotilla_vehiculos v ON m.vehiculo_id = v.id
+     WHERE m.estado IN('pendiente','impugnada')"
+    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
+) ?? [];
+if (($flotilla_multas['c'] ?? 0) > 0) {
+    $monto_multas = number_format((float)($flotilla_multas['monto'] ?? 0), 2);
+    $alertas[] = ['tipo' => 'warning', 'icono' => 'ticket-x',
+        'titulo' => "{$flotilla_multas['c']} multa(s) pendiente(s) · \${$monto_multas}",
+        'mensaje' => 'Infracciones sin pagar o en proceso de impugnación.',
+        'enlace' => url('flotilla_multas.php')];
+}
+
+$flotilla_mant_vencidos = (int)(db_one(
+    "SELECT COUNT(*) c FROM flotilla_mant_historial h
+     LEFT JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+     WHERE h.proxima_fecha IS NOT NULL AND h.proxima_fecha < CURDATE()"
+    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
+)['c'] ?? 0);
+if ($flotilla_mant_vencidos > 0) {
+    $alertas[] = ['tipo' => 'warning', 'icono' => 'wrench',
+        'titulo' => "{$flotilla_mant_vencidos} mantenimiento(s) de vehículo vencido(s)",
+        'mensaje' => 'Servicios que ya pasaron su fecha programada.',
+        'enlace' => url('flotilla_mantenimiento.php?vista=pendientes')];
+}
+
+$flotilla_siniestros = (int)(db_one(
+    "SELECT COUNT(*) c FROM flotilla_siniestros s
+     LEFT JOIN flotilla_vehiculos v ON s.vehiculo_id = v.id
+     WHERE s.estado IN('reportado','en_proceso')"
+    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
+)['c'] ?? 0);
+if ($flotilla_siniestros > 0) {
+    $alertas[] = ['tipo' => 'critica', 'icono' => 'shield-alert',
+        'titulo' => "{$flotilla_siniestros} siniestro(s) activo(s) en flotilla",
+        'mensaje' => 'Accidentes o siniestros reportados sin cerrar.',
+        'enlace' => url('flotilla_siniestros.php')];
+}
+
 $h = (int) date('G');
 $saludo = $h < 12 ? 'Buenos días' : ($h < 19 ? 'Buenas tardes' : 'Buenas noches');
 $meses_es = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
