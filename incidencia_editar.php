@@ -72,7 +72,8 @@ $valores = [
     'asignado_a_id' => $incidencia['asignado_a_id'],
     'es_reincidencia' => (int) $incidencia['es_reincidencia'],
     'incidencia_padre_id' => $incidencia['incidencia_padre_id'],
-    'fecha_evento' => $incidencia['fecha_evento'] ? date('Y-m-d\TH:i', strtotime($incidencia['fecha_evento'])) : '',
+    'fecha_evento'      => $incidencia['fecha_evento']      ? date('Y-m-d\TH:i', strtotime($incidencia['fecha_evento']))      : '',
+    'fecha_resolucion'  => $incidencia['fecha_resolucion']  ? date('Y-m-d\TH:i', strtotime($incidencia['fecha_resolucion']))  : '',
     'causa_raiz' => $incidencia['causa_raiz'],
     'solucion' => $incidencia['solucion'],
     'recomendaciones' => $incidencia['recomendaciones'],
@@ -163,6 +164,11 @@ if (es_post()) {
                 $fecha_resolucion = $incidencia['fecha_resolucion'];
                 $fecha_cierre     = $incidencia['fecha_cierre'];
                 $resuelto_por_id  = $incidencia['resuelto_por_id'];
+
+                // Administradores pueden ingresar fecha_resolucion manualmente
+                if (tiene_permiso('administrar') && !empty($valores['fecha_resolucion'])) {
+                    $fecha_resolucion = date('Y-m-d H:i:s', strtotime($valores['fecha_resolucion']));
+                }
 
                 if ($nuevo_estado && (int) $nuevo_estado['es_final'] === 1) {
                     if (!$fecha_resolucion) $fecha_resolucion = date('Y-m-d H:i:s');
@@ -650,6 +656,15 @@ require_once __DIR__ . '/config/header.php';
                     <i data-lucide="info" class="w-3.5 h-3.5"></i>
                     Si registras una solución, la incidencia se marcará automáticamente como <strong>Completada</strong>.
                 </div>
+                <?php if (tiene_permiso('administrar')): ?>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Fecha de resolución</label>
+                    <input type="datetime-local" name="fecha_resolucion"
+                           value="<?= e((string) $valores['fecha_resolucion']) ?>"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <p class="text-xs text-zinc-500 mt-1">Se registra automáticamente al completar. Solo admins pueden modificarla.</p>
+                </div>
+                <?php endif; ?>
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Causa raíz</label>
                     <textarea name="causa_raiz" rows="2" class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700"><?= e((string) $valores['causa_raiz']) ?></textarea>

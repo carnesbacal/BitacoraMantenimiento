@@ -62,7 +62,8 @@ $default = [
     'reportante_nombre' => '', 'reportante_puesto' => '',
     'asignado_a_id' => '',
     'es_reincidencia' => 0, 'incidencia_padre_id' => '',
-    'fecha_evento' => date('Y-m-d\TH:i'),
+    'fecha_evento'     => date('Y-m-d\TH:i'),
+    'fecha_resolucion' => '',
     'causa_raiz' => '', 'solucion' => '', 'recomendaciones' => '',
     // Proveedor y costos
     'proveedor_modo' => 'interno',  // interno | catalogo | otro
@@ -176,7 +177,12 @@ if (es_post()) {
                 // Auto-completar: si registró solución, marcar como Completada
                 $tiene_solucion = trim((string) $valores['solucion']) !== '';
                 $estado_a_usar = ($tiene_solucion && $estado_completada_id) ? $estado_completada_id : $estado_inicial_id;
-                $fecha_resolucion = $tiene_solucion ? date('Y-m-d H:i:s') : null;
+                // Admin puede ingresar fecha_resolucion manualmente; si no, auto-set al completar
+                if (tiene_permiso('administrar') && !empty($valores['fecha_resolucion'])) {
+                    $fecha_resolucion = date('Y-m-d H:i:s', strtotime($valores['fecha_resolucion']));
+                } else {
+                    $fecha_resolucion = $tiene_solucion ? date('Y-m-d H:i:s') : null;
+                }
                 $resuelto_por = $tiene_solucion ? (int) $u['id'] : null;
                 if ($tiene_solucion && !$fecha_atencion) {
                     $fecha_atencion = date('Y-m-d H:i:s');
@@ -1010,6 +1016,15 @@ require_once __DIR__ . '/config/header.php';
                     <i data-lucide="info" class="w-3.5 h-3.5"></i>
                     Si registras una solución, la incidencia se marcará automáticamente como <strong>Completada</strong>.
                 </div>
+                <?php if (tiene_permiso('administrar')): ?>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Fecha de resolución</label>
+                    <input type="datetime-local" name="fecha_resolucion"
+                           value="<?= e((string) $valores['fecha_resolucion']) ?>"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700 focus:ring-2 focus:ring-bacal-100">
+                    <p class="text-xs text-zinc-500 mt-1">Se registra automáticamente al completar. Solo admins pueden modificarla.</p>
+                </div>
+                <?php endif; ?>
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Causa raíz identificada</label>
                     <textarea name="causa_raiz" rows="2"

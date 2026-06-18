@@ -234,7 +234,7 @@ function costos_resumen_periodo(string $desde, string $hasta, string $extra_wher
             SUM(CASE WHEN i.proveedor_escalado_id IS NOT NULL
                        OR i.proveedor_externo_info IS NOT NULL THEN 1 ELSE 0 END) AS con_proveedor
          FROM incidencias i
-         WHERE DATE(i.creado_en) BETWEEN :d AND :h $extra_where",
+         WHERE DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h $extra_where",
         $params
     );
 
@@ -297,7 +297,7 @@ function costos_ranking_incidencias(string $desde, string $hasta, int $limite = 
          INNER JOIN estados est ON i.estado_id = est.id
          INNER JOIN severidades sev ON i.severidad_id = sev.id
          LEFT JOIN proveedores p ON i.proveedor_escalado_id = p.id
-         WHERE DATE(i.creado_en) BETWEEN :d AND :h $extra_where
+         WHERE DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h $extra_where
          HAVING total > 0
          ORDER BY total DESC
          LIMIT $limite",
@@ -320,7 +320,7 @@ function costos_ranking_proveedores(string $desde, string $hasta, int $limite = 
             SUM(COALESCE(i.costo_mano_obra, 0) + COALESCE(i.costo_materiales_proveedor, 0)) AS total
          FROM proveedores p
          INNER JOIN incidencias i ON i.proveedor_escalado_id = p.id
-            AND DATE(i.creado_en) BETWEEN :d AND :h $extra_where
+            AND DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h $extra_where
          GROUP BY p.id, p.nombre, p.servicio
          HAVING total > 0
          ORDER BY total DESC
@@ -338,15 +338,16 @@ function costos_tendencia(string $desde, string $hasta, string $agrupar = 'mes',
     $moi = sql_mano_obra_interna('i');
     $ref = sql_costo_refacciones('i');
 
+    $fecha_sql = "COALESCE(i.fecha_resolucion, i.fecha_evento)";
     $grupo_sql = match ($agrupar) {
-        'dia'    => "DATE(i.creado_en)",
-        'semana' => "DATE_FORMAT(i.creado_en, '%x-S%v')",
-        default  => "DATE_FORMAT(i.creado_en, '%Y-%m')",
+        'dia'    => "DATE($fecha_sql)",
+        'semana' => "DATE_FORMAT($fecha_sql, '%x-S%v')",
+        default  => "DATE_FORMAT($fecha_sql, '%Y-%m')",
     };
     $label_sql = match ($agrupar) {
-        'dia'    => "DATE_FORMAT(i.creado_en, '%d/%m/%Y')",
-        'semana' => "CONCAT('Sem ', DATE_FORMAT(i.creado_en, '%v · %x'))",
-        default  => "DATE_FORMAT(i.creado_en, '%m/%Y')",
+        'dia'    => "DATE_FORMAT($fecha_sql, '%d/%m/%Y')",
+        'semana' => "CONCAT('Sem ', DATE_FORMAT($fecha_sql, '%v · %x'))",
+        default  => "DATE_FORMAT($fecha_sql, '%m/%Y')",
     };
 
     return db_all(
@@ -359,7 +360,7 @@ function costos_tendencia(string $desde, string $hasta, string $agrupar = 'mes',
             SUM(COALESCE(i.costo_mano_obra, 0) + COALESCE(i.costo_materiales_proveedor, 0)
                 + COALESCE(i.costo_materiales_comprados, 0) + $ref + $moi) AS total
          FROM incidencias i
-         WHERE DATE(i.creado_en) BETWEEN :d AND :h $extra_where
+         WHERE DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h $extra_where
          GROUP BY $grupo_sql
          ORDER BY periodo ASC",
         $params
@@ -383,7 +384,7 @@ function costos_por_sucursal(string $desde, string $hasta): array {
                 + COALESCE(i.costo_materiales_comprados, 0) + $ref + $moi) AS total
          FROM sucursales s
          LEFT JOIN incidencias i ON i.sucursal_id = s.id
-            AND DATE(i.creado_en) BETWEEN :d AND :h
+            AND DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h
          WHERE s.activo = 1
          GROUP BY s.id, s.nombre, s.codigo
          ORDER BY total DESC",
@@ -406,7 +407,7 @@ function costos_mano_obra_por_tecnico(string $desde, string $hasta, string $extr
             COALESCE(SUM(i.horas_trabajadas * i.tarifa_hora_aplicada), 0) AS costo_total
          FROM usuarios u
          LEFT JOIN incidencias i ON i.asignado_a_id = u.id
-            AND DATE(i.creado_en) BETWEEN :d AND :h $extra_where
+            AND DATE(COALESCE(i.fecha_resolucion, i.fecha_evento)) BETWEEN :d AND :h $extra_where
          INNER JOIN roles r ON u.rol_id = r.id
          WHERE r.puede_resolver = 1 AND u.activo = 1
          GROUP BY u.id, u.nombre_completo, u.tarifa_hora
