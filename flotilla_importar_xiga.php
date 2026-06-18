@@ -257,13 +257,30 @@ if (es_post() && (string)input('op') === 'previa') {
                     $filas_preview[] = $f;
                 }
 
+                // Agrupar placas sin match para mostrar resumen
+                $sin_match_placas = [];
+                foreach ($filas_preview as $f) {
+                    if (!$f['es_duplicado'] && $f['sin_match']) {
+                        $p = $f['placas_raw'];
+                        if (!isset($sin_match_placas[$p])) {
+                            $sin_match_placas[$p] = ['tickets' => 0, 'litros' => 0.0, 'monto' => 0.0, 'primera' => $f['fecha']];
+                        }
+                        $sin_match_placas[$p]['tickets']++;
+                        $sin_match_placas[$p]['litros'] += $f['litros'];
+                        $sin_match_placas[$p]['monto']  += $f['monto_xiga'];
+                    }
+                }
+                arsort($sin_match_placas); // ordenar por monto desc no aplica en arsort, usamos uasort
+                uasort($sin_match_placas, fn($a, $b) => $b['monto'] <=> $a['monto']);
+
                 $resumen = [
-                    'total'      => count($filas_preview),
-                    'nuevas'     => count(array_filter($filas_preview, fn($f) => !$f['es_duplicado'] && !$f['sin_match'])),
-                    'duplicadas' => count(array_filter($filas_preview, fn($f) =>  $f['es_duplicado'])),
-                    'sin_match'  => count(array_filter($filas_preview, fn($f) => !$f['es_duplicado'] &&  $f['sin_match'])),
-                    'min_fecha'  => '',
-                    'max_fecha'  => '',
+                    'total'            => count($filas_preview),
+                    'nuevas'           => count(array_filter($filas_preview, fn($f) => !$f['es_duplicado'] && !$f['sin_match'])),
+                    'duplicadas'       => count(array_filter($filas_preview, fn($f) =>  $f['es_duplicado'])),
+                    'sin_match'        => count(array_filter($filas_preview, fn($f) => !$f['es_duplicado'] &&  $f['sin_match'])),
+                    'sin_match_placas' => $sin_match_placas,
+                    'min_fecha'        => '',
+                    'max_fecha'        => '',
                 ];
 
                 $fechas = array_filter(array_column($filas_preview, 'fecha'));
@@ -519,11 +536,60 @@ require_once __DIR__ . '/config/flotilla_nav.php';
     <?php endif; ?>
 
     <?php if ($resumen['sin_match'] > 0): ?>
-    <div class="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 flex gap-3">
-        <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5 text-amber-500"></i>
-        <div>
-            <p class="font-semibold"><?= $resumen['sin_match'] ?> registros sin coincidencia de placas</p>
-            <p>Estas placas no existen en el catálogo de vehículos y no se importarán. Puedes agregarlas manualmente en <a href="<?= url('flotilla_vehiculos.php') ?>" class="underline">Vehículos</a> y volver a importar.</p>
+    <div x-data="{ abierto: false }" class="rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+        <div class="p-4 flex gap-3">
+            <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5 text-amber-500"></i>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold"><?= $resumen['sin_match'] ?> registros sin coincidencia de placas — no se importarán</p>
+                <p class="mt-0.5">Placas no registradas en el catálogo de vehículos.
+                    Si alguna pertenece a tu flotilla, agrégala en
+                    <a href="<?= url('flotilla_vehiculos.php') ?>" class="underline font-medium">Vehículos</a>
+                    y vuelve a importar.</p>
+            </div>
+            <button type="button" @click="abierto = !abierto"
+                    class="shrink-0 text-xs font-semibold underline whitespace-nowrap mt-0.5"
+                    x-text="abierto ? 'Ocultar desglose' : 'Ver desglose (' + <?= count($resumen['sin_match_placas']) ?> + ' placas)'"></button>
+        </div>
+
+        <div x-show="abierto" x-transition class="border-t border-amber-200 overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr class="bg-amber-100/60 text-amber-900 font-semibold uppercase tracking-wide">
+                        <th class="px-4 py-2 text-left">Placas</th>
+                        <th class="px-4 py-2 text-right">Transacciones</th>
+                        <th class="px-4 py-2 text-right">Litros</th>
+                        <th class="px-4 py-2 text-right">Monto total</th>
+                        <th class="px-4 py-2 text-left">Primera transacción</th>
+                        <th class="px-4 py-2 text-left">Acción</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-amber-100">
+                    <?php foreach ($resumen['sin_match_placas'] as $placa => $datos): ?>
+                    <tr class="hover:bg-amber-100/40">
+                        <td class="px-4 py-2 font-mono font-bold text-zinc-800"><?= e($placa) ?></td>
+                        <td class="px-4 py-2 text-right"><?= number_format($datos['tickets']) ?></td>
+                        <td class="px-4 py-2 text-right"><?= number_format($datos['litros'], 1) ?> L</td>
+                        <td class="px-4 py-2 text-right font-semibold">$<?= number_format($datos['monto'], 2) ?></td>
+                        <td class="px-4 py-2 text-zinc-600"><?= e(substr($datos['primera'] ?? '', 0, 10)) ?></td>
+                        <td class="px-4 py-2">
+                            <a href="<?= url('flotilla_vehiculos.php') ?>"
+                               class="text-bacal-700 underline hover:text-bacal-900 font-medium">
+                                + Registrar vehículo
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <tr class="bg-amber-100/60 font-semibold text-amber-900">
+                        <td class="px-4 py-2">Total sin match</td>
+                        <td class="px-4 py-2 text-right"><?= number_format($resumen['sin_match']) ?></td>
+                        <td class="px-4 py-2 text-right"><?= number_format(array_sum(array_column($resumen['sin_match_placas'], 'litros')), 1) ?> L</td>
+                        <td class="px-4 py-2 text-right">$<?= number_format(array_sum(array_column($resumen['sin_match_placas'], 'monto')), 2) ?></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
     </div>
     <?php endif; ?>
