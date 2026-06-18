@@ -110,14 +110,22 @@ function registrar_sesion_activa(int $usuario_id): void {
  * Si fue forzada a cerrarse remotamente, retorna false (motivo de cierre opcional).
  * También actualiza ultima_actividad.
  */
-function sesion_sigue_activa(): array {
+function sesion_sigue_activa(?int $usuario_id = null): array {
     $session_id = session_id();
     if (empty($session_id)) return ['activa' => false, 'motivo' => null];
 
-    $row = db_one(
-        "SELECT activa, motivo_cierre FROM sesiones WHERE session_id = :sid LIMIT 1",
-        ['sid' => $session_id]
-    );
+    if ($usuario_id !== null) {
+        $row = db_one(
+            "SELECT activa, motivo_cierre FROM sesiones
+             WHERE session_id = :sid AND usuario_id = :uid LIMIT 1",
+            ['sid' => $session_id, 'uid' => $usuario_id]
+        );
+    } else {
+        $row = db_one(
+            "SELECT activa, motivo_cierre FROM sesiones WHERE session_id = :sid LIMIT 1",
+            ['sid' => $session_id]
+        );
+    }
 
     if (!$row) {
         // No hay registro en BD: puede ser una sesión vieja, no la consideramos válida
@@ -130,8 +138,10 @@ function sesion_sigue_activa(): array {
     }
 
     // Actualizar ultima_actividad (ON UPDATE CURRENT_TIMESTAMP lo hace solo cuando hay un cambio)
-    db_exec("UPDATE sesiones SET ultima_actividad = NOW() WHERE session_id = :sid",
-        ['sid' => $session_id]);
+    db_exec(
+        "UPDATE sesiones SET ultima_actividad = NOW() WHERE session_id = :sid",
+        ['sid' => $session_id]
+    );
 
     return ['activa' => true, 'motivo' => null];
 }
@@ -205,6 +215,28 @@ function cerrar_todas_sesiones_usuario(int $usuario_id, string $motivo = 'cerrad
         );
     }
     return $total;
+}
+
+/**
+ * Limpia sesiones huérfanas: registros marcados como activos en BD
+ * pero sin actividad en más de 8 horas.
+ * Se llama automáticamente desde esta_logueado() con 1% de probabilidad.
+ */
+function limpiar_sesiones_huerfanas(): void {
+    $horas_max = 8;
+    try {
+        db_exec(
+            "UPDATE sesiones
+             SET activa = 0,
+                 motivo_cierre = 'expirada por inactividad (cleanup automático)',
+                 cerrada_en = NOW()
+             WHERE activa = 1
+               AND ultima_actividad < NOW() - INTERVAL :h HOUR",
+            ['h' => $horas_max]
+        );
+    } catch (Throwable $e) {
+        // No interrumpir la ejecución si falla el cleanup
+    }
 }
 
 /**
