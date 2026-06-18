@@ -106,9 +106,14 @@ function flot_leer_xlsx(string $filepath) {
             if (!isset($m[1])) continue;
             $col_idx = flot_col_idx($m[1]);
             $tipo    = (string) $cell['t'];
-            $val     = isset($cell->v) ? trim((string) $cell->v) : '';
-            if ($tipo === 's' && $val !== '') {
-                $val = $strings[(int) $val] ?? '';
+            if ($tipo === 'inlineStr') {
+                // openpyxl y LibreOffice guardan strings inline: <is><t>valor</t></is>
+                $val = isset($cell->is->t) ? trim((string) $cell->is->t) : '';
+            } else {
+                $val = isset($cell->v) ? trim((string) $cell->v) : '';
+                if ($tipo === 's' && $val !== '') {
+                    $val = $strings[(int) $val] ?? '';
+                }
             }
             $fila[$col_idx] = $val;
         }
