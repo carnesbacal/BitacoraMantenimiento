@@ -1,0 +1,5 @@
+# Bloquear acceso directo a archivos temporales
+<FilesMatch ".*">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
