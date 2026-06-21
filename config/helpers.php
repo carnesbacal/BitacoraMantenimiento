@@ -101,6 +101,14 @@ function fmt_fecha(?string $fecha, bool $con_hora = true): string {
 }
 
 /**
+ * Formatea fecha con hora. Alias de fmt_fecha(\$fecha, true).
+ * Usado en flotilla (combustible, viajes, siniestros, checklist) y otras vistas.
+ */
+function fmt_fecha_hora(?string $fecha): string {
+    return fmt_fecha($fecha, true);
+}
+
+/**
  * Tiempo relativo legible: "hace 5 minutos", "hace 2 horas", etc.
  */
 function fmt_tiempo_relativo(?string $fecha): string {

@@ -60,8 +60,8 @@ try {
     <!-- Alpine.js (debe cargar ANTES que lucide para que el DOM dinámico funcione) -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-    <!-- Lucide icons (jsdelivr es más rápido globalmente; defer para no bloquear render) -->
-    <script src="https://cdn.jsdelivr.net/npm/lucide@0.511.0/dist/umd/lucide.min.js"></script>
+    <!-- Lucide icons (alojado localmente: carga instantánea desde el servidor, sin parpadeo al cambiar de página) -->
+    <script src="<?= url('assets/js/lucide.min.js') ?>?v=0.511.0"></script>
 
     <!-- Aplicar modo oscuro ANTES de renderizar para evitar flash blanco -->
     <script>
