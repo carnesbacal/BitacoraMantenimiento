@@ -22,6 +22,12 @@ if (session_status() === PHP_SESSION_NONE) {
     $cookie_path = defined('APP_URL')
         ? rtrim(parse_url(APP_URL, PHP_URL_PATH) ?: '/', '/') . '/'
         : '/';
+    // Algunos navegadores no envían la cookie si el Path contiene caracteres
+    // especiales como paréntesis (ej: carpeta "BitacoraMantenimiento(Local)").
+    // En ese caso usamos '/' para que la sesión funcione igual.
+    if (preg_match('/[();\s,]/', $cookie_path)) {
+        $cookie_path = '/';
+    }
     ini_set('session.cookie_path', $cookie_path);
     unset($cookie_path);
     session_start();

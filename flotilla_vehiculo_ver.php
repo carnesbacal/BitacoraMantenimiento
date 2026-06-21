@@ -373,6 +373,12 @@ require_once __DIR__ . '/config/header.php';
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-wrap text-center">
+                <?php if ($es_admin): ?>
+                <a href="<?= url("flotilla_vehiculo_editar.php?id=$id") ?>"
+                   class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800 transition-colors">
+                    <i data-lucide="pencil" class="w-4 h-4"></i> Editar
+                </a>
+                <?php endif; ?>
                 <div class="bg-zinc-50 rounded-lg px-4 py-2">
                     <div class="font-display text-xl font-extrabold text-zinc-900"><?= number_format($vehiculo['km_actual']) ?></div>
                     <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Km actual</div>

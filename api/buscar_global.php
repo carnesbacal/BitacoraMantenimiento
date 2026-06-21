@@ -29,7 +29,11 @@ $ver_todas = tiene_permiso('ver_todas_sucursales');
 $ver_kb = tiene_permiso('administrar') || (int) ($u['sucursal_id'] ?? 0) > 0; // todos los logueados
 
 $like = '%' . $q . '%';
-$resultados = ['incidencias' => [], 'equipos' => [], 'usuarios' => [], 'kb' => []];
+$resultados = [
+    'incidencias'   => [], 'equipos'      => [], 'usuarios'     => [], 'kb'       => [],
+    'mantenimientos'=> [], 'refacciones'  => [], 'herramientas' => [], 'medidores'=> [],
+    'recordatorios' => [], 'vehiculos'    => [], 'conductores'  => [], 'proveedores' => [],
+];
 
 // ============================================================================
 // INCIDENCIAS
@@ -154,6 +158,168 @@ try {
 } catch (Throwable $e) {}
 
 // ============================================================================
+// MANTENIMIENTOS (preventivos/correctivos sobre equipos)
+// ============================================================================
+try {
+    $where_suc_m = $ver_todas ? '' : 'AND e.sucursal_id = :sid';
+    $params_m = ['q1' => $like, 'q2' => $like, 'q3' => $like];
+    if (!$ver_todas) $params_m['sid'] = (int) $u['sucursal_id'];
+
+    $resultados['mantenimientos'] = db_all(
+        "SELECT m.id, m.titulo, m.descripcion, m.estado, m.fecha_programada,
+                e.codigo_inventario equipo_codigo, e.nombre equipo_nombre,
+                s.codigo sucursal_codigo
+         FROM mantenimientos m
+         INNER JOIN equipos e ON m.equipo_id = e.id
+         INNER JOIN sucursales s ON e.sucursal_id = s.id
+         WHERE (m.titulo LIKE :q1 OR m.descripcion LIKE :q2 OR e.nombre LIKE :q3)
+           $where_suc_m
+         ORDER BY m.fecha_programada DESC
+         LIMIT 6",
+        $params_m
+    );
+} catch (Throwable $e) {}
+
+// ============================================================================
+// REFACCIONES
+// ============================================================================
+try {
+    $tabla_ref = db_one("SHOW TABLES LIKE 'refacciones'");
+    if ($tabla_ref) {
+        $resultados['refacciones'] = db_all(
+            "SELECT r.id, r.codigo, r.nombre, r.descripcion, r.marca, r.numero_parte
+             FROM refacciones r
+             WHERE (r.codigo LIKE :q1 OR r.nombre LIKE :q2 OR r.numero_parte LIKE :q3 OR r.descripcion LIKE :q4)
+             ORDER BY r.nombre ASC
+             LIMIT 6",
+            ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like]
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
+// HERRAMIENTAS
+// ============================================================================
+try {
+    $tabla_her = db_one("SHOW TABLES LIKE 'herramientas'");
+    if ($tabla_her) {
+        $where_suc_h = $ver_todas ? '' : 'AND h.sucursal_id = :sid';
+        $params_h = ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like];
+        if (!$ver_todas) $params_h['sid'] = (int) $u['sucursal_id'];
+
+        $resultados['herramientas'] = db_all(
+            "SELECT h.id, h.codigo, h.nombre, h.marca, h.numero_serie, h.estado,
+                    s.codigo sucursal_codigo
+             FROM herramientas h
+             LEFT JOIN sucursales s ON h.sucursal_id = s.id
+             WHERE (h.codigo LIKE :q1 OR h.nombre LIKE :q2 OR h.numero_serie LIKE :q3 OR h.marca LIKE :q4)
+               AND h.estado != 'baja'
+               $where_suc_h
+             ORDER BY h.nombre ASC
+             LIMIT 6",
+            $params_h
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
+// MEDIDORES
+// ============================================================================
+try {
+    $tabla_med = db_one("SHOW TABLES LIKE 'medidores'");
+    if ($tabla_med) {
+        $where_suc_me = $ver_todas ? '' : 'AND m.sucursal_id = :sid';
+        $params_me = ['q1' => $like, 'q2' => $like];
+        if (!$ver_todas) $params_me['sid'] = (int) $u['sucursal_id'];
+
+        $resultados['medidores'] = db_all(
+            "SELECT m.id, m.nombre, m.numero_serie, m.activo,
+                    s.codigo sucursal_codigo
+             FROM medidores m
+             LEFT JOIN sucursales s ON m.sucursal_id = s.id
+             WHERE (m.nombre LIKE :q1 OR m.numero_serie LIKE :q2)
+               $where_suc_me
+             ORDER BY m.nombre ASC
+             LIMIT 5",
+            $params_me
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
+// RECORDATORIOS (solo los del usuario actual, o admin ve todos)
+// ============================================================================
+try {
+    $where_rec = tiene_permiso('administrar') ? '' : 'AND r.usuario_id = :uid';
+    $params_rec = ['q1' => $like, 'q2' => $like];
+    if (!tiene_permiso('administrar')) $params_rec['uid'] = (int) $u['id'];
+
+    $resultados['recordatorios'] = db_all(
+        "SELECT r.id, r.titulo, r.mensaje, r.fecha_envio, r.enviado
+         FROM recordatorios r
+         WHERE (r.titulo LIKE :q1 OR r.mensaje LIKE :q2)
+           $where_rec
+         ORDER BY r.enviado ASC, r.fecha_envio ASC
+         LIMIT 5",
+        $params_rec
+    );
+} catch (Throwable $e) {}
+
+// ============================================================================
+// FLOTILLA — VEHÍCULOS
+// ============================================================================
+try {
+    $tabla_flot = db_one("SHOW TABLES LIKE 'flotilla_vehiculos'");
+    if ($tabla_flot) {
+        $resultados['vehiculos'] = db_all(
+            "SELECT v.id, v.placas, v.alias, v.marca, v.modelo, v.anio, v.activo,
+                    t.nombre AS tipo_nombre
+             FROM flotilla_vehiculos v
+             LEFT JOIN flotilla_tipos_vehiculo t ON v.tipo_id = t.id
+             WHERE (v.placas LIKE :q1 OR v.alias LIKE :q2 OR v.marca LIKE :q3 OR v.modelo LIKE :q4)
+             ORDER BY v.activo DESC, v.placas ASC
+             LIMIT 6",
+            ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like]
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
+// FLOTILLA — CONDUCTORES
+// ============================================================================
+try {
+    $tabla_cond = db_one("SHOW TABLES LIKE 'flotilla_conductores'");
+    if ($tabla_cond) {
+        $resultados['conductores'] = db_all(
+            "SELECT c.id, c.nombre_completo, c.licencia_numero, c.licencia_tipo,
+                    c.telefono, c.activo
+             FROM flotilla_conductores c
+             WHERE (c.nombre_completo LIKE :q1 OR c.licencia_numero LIKE :q2)
+             ORDER BY c.activo DESC, c.nombre_completo ASC
+             LIMIT 5",
+            ['q1' => $like, 'q2' => $like]
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
+// PROVEEDORES
+// ============================================================================
+try {
+    $tabla_prov = db_one("SHOW TABLES LIKE 'proveedores'");
+    if ($tabla_prov) {
+        $resultados['proveedores'] = db_all(
+            "SELECT p.id, p.nombre, p.activo
+             FROM proveedores p
+             WHERE p.nombre LIKE :q1
+             ORDER BY p.activo DESC, p.nombre ASC
+             LIMIT 5",
+            ['q1' => $like]
+        );
+    }
+} catch (Throwable $e) {}
+
+// ============================================================================
 // Construir respuesta agrupada
 // ============================================================================
 $grupos = [];
@@ -229,6 +395,164 @@ if (!empty($resultados['kb'])) {
         ];
     }
     $grupos[] = ['nombre' => 'Base de conocimiento', 'icono' => 'book-open', 'items' => $items];
+}
+
+if (!empty($resultados['mantenimientos'])) {
+    $estado_color = [
+        'programado'  => '#0EA5E9',
+        'proximo'     => '#F59E0B',
+        'en_progreso' => '#8B5CF6',
+        'completado'  => '#16A34A',
+        'cancelado'   => '#71717a',
+        'vencido'     => '#DC2626',
+    ];
+    $items = [];
+    foreach ($resultados['mantenimientos'] as $r) {
+        $color = $estado_color[$r['estado']] ?? '#71717a';
+        $items[] = [
+            'tipo'        => 'mantenimiento',
+            'titulo'      => $r['titulo'],
+            'subtitulo'   => ($r['equipo_codigo'] ? $r['equipo_codigo'] . ' · ' : '') .
+                             $r['equipo_nombre'] . ' · ' . $r['sucursal_codigo'] .
+                             ' · ' . fmt_fecha($r['fecha_programada']),
+            'badge'       => $r['estado'],
+            'badge_color' => $color,
+            'url'         => url_relativa('mantenimiento_ver.php?id=' . $r['id']),
+            'icono'       => 'wrench',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Mantenimientos', 'icono' => 'wrench', 'items' => $items];
+}
+
+if (!empty($resultados['refacciones'])) {
+    $items = [];
+    foreach ($resultados['refacciones'] as $r) {
+        $sub = [];
+        if ($r['marca'])       $sub[] = $r['marca'];
+        if ($r['numero_parte']) $sub[] = 'P/N: ' . $r['numero_parte'];
+        if ($r['descripcion']) $sub[] = mb_substr($r['descripcion'], 0, 60) . (mb_strlen($r['descripcion']) > 60 ? '…' : '');
+        $items[] = [
+            'tipo'        => 'refaccion',
+            'titulo'      => $r['codigo'] . ' · ' . $r['nombre'],
+            'subtitulo'   => $sub ? implode(' · ', $sub) : 'Refacción',
+            'badge'       => null,
+            'badge_color' => null,
+            'url'         => url_relativa('refaccion_ver.php?id=' . $r['id']),
+            'icono'       => 'package',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Refacciones', 'icono' => 'package', 'items' => $items];
+}
+
+if (!empty($resultados['herramientas'])) {
+    $estado_color_h = [
+        'disponible'    => '#16A34A',
+        'prestada'      => '#F59E0B',
+        'en_reparacion' => '#8B5CF6',
+        'extraviada'    => '#DC2626',
+    ];
+    $items = [];
+    foreach ($resultados['herramientas'] as $r) {
+        $color = $estado_color_h[$r['estado']] ?? '#71717a';
+        $items[] = [
+            'tipo'        => 'herramienta',
+            'titulo'      => $r['codigo'] . ' · ' . $r['nombre'],
+            'subtitulo'   => ($r['marca'] ? $r['marca'] . ' · ' : '') .
+                             ($r['sucursal_codigo'] ?? ''),
+            'badge'       => $r['estado'] !== 'disponible' ? $r['estado'] : null,
+            'badge_color' => $color,
+            'url'         => url_relativa('herramienta_ver.php?id=' . $r['id']),
+            'icono'       => 'wrench',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Herramientas', 'icono' => 'hammer', 'items' => $items];
+}
+
+if (!empty($resultados['medidores'])) {
+    $items = [];
+    foreach ($resultados['medidores'] as $r) {
+        $items[] = [
+            'tipo'        => 'medidor',
+            'titulo'      => $r['nombre'],
+            'subtitulo'   => ($r['numero_serie'] ? 'S/N: ' . $r['numero_serie'] . ' · ' : '') .
+                             ($r['sucursal_codigo'] ?? ''),
+            'badge'       => (int) $r['activo'] === 0 ? 'INACTIVO' : null,
+            'badge_color' => '#71717a',
+            'url'         => url_relativa('medidor_ver.php?id=' . $r['id']),
+            'icono'       => 'gauge',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Medidores', 'icono' => 'gauge', 'items' => $items];
+}
+
+if (!empty($resultados['recordatorios'])) {
+    $items = [];
+    foreach ($resultados['recordatorios'] as $r) {
+        $items[] = [
+            'tipo'        => 'recordatorio',
+            'titulo'      => $r['titulo'],
+            'subtitulo'   => ($r['mensaje'] ? mb_substr($r['mensaje'], 0, 80) . (mb_strlen($r['mensaje']) > 80 ? '…' : '') : '') .
+                             ' · ' . fmt_fecha($r['fecha_envio']),
+            'badge'       => (int) $r['enviado'] === 1 ? 'ENVIADO' : 'PENDIENTE',
+            'badge_color' => (int) $r['enviado'] === 1 ? '#16A34A' : '#F59E0B',
+            'url'         => url_relativa('recordatorios.php'),
+            'icono'       => 'bell',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Recordatorios', 'icono' => 'bell', 'items' => $items];
+}
+
+if (!empty($resultados['vehiculos'])) {
+    $items = [];
+    foreach ($resultados['vehiculos'] as $r) {
+        $label_activo = (int) $r['activo'] === 0 ? 'BAJA' : null;
+        $items[] = [
+            'tipo'        => 'vehiculo',
+            'titulo'      => strtoupper($r['placas']) . ($r['alias'] ? ' · ' . $r['alias'] : ''),
+            'subtitulo'   => trim(($r['marca'] ?? '') . ' ' . ($r['modelo'] ?? '') . ($r['anio'] ? ' ' . $r['anio'] : '')) .
+                             ($r['tipo_nombre'] ? ' · ' . $r['tipo_nombre'] : ''),
+            'badge'       => $label_activo,
+            'badge_color' => '#71717a',
+            'url'         => url_relativa('flotilla_vehiculo_ver.php?id=' . $r['id']),
+            'icono'       => 'car',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Vehículos', 'icono' => 'car', 'items' => $items];
+}
+
+if (!empty($resultados['conductores'])) {
+    $items = [];
+    foreach ($resultados['conductores'] as $r) {
+        $sub = [];
+        if ($r['licencia_numero']) $sub[] = 'Lic. ' . $r['licencia_numero'] . ($r['licencia_tipo'] ? ' (' . $r['licencia_tipo'] . ')' : '');
+        if ($r['telefono'])        $sub[] = $r['telefono'];
+        $items[] = [
+            'tipo'        => 'conductor',
+            'titulo'      => $r['nombre_completo'],
+            'subtitulo'   => $sub ? implode(' · ', $sub) : 'Conductor',
+            'badge'       => (int) $r['activo'] === 0 ? 'INACTIVO' : null,
+            'badge_color' => '#71717a',
+            'url'         => url_relativa('flotilla_conductores.php'),
+            'icono'       => 'user-check',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Conductores', 'icono' => 'user-check', 'items' => $items];
+}
+
+if (!empty($resultados['proveedores'])) {
+    $items = [];
+    foreach ($resultados['proveedores'] as $r) {
+        $items[] = [
+            'tipo'        => 'proveedor',
+            'titulo'      => $r['nombre'],
+            'subtitulo'   => 'Proveedor',
+            'badge'       => (int) $r['activo'] === 0 ? 'INACTIVO' : null,
+            'badge_color' => '#71717a',
+            'url'         => url_relativa('proveedores.php'),
+            'icono'       => 'building-2',
+        ];
+    }
+    $grupos[] = ['nombre' => 'Proveedores', 'icono' => 'building-2', 'items' => $items];
 }
 
 if (!empty($resultados['vault'])) {
