@@ -225,6 +225,7 @@ require_once __DIR__ . '/config/header.php';
 </div>
 
 <?php if (count($tendencia) >= 1): ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function () {
     function initGrafica() {
