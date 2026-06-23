@@ -16,6 +16,8 @@ $puede_gestionar = tiene_permiso('administrar') || tiene_permiso('resolver');
 $f_vehiculo_id = (int) input('vehiculo_id', 0);
 $f_vista       = (string) input('vista', 'pendientes'); // pendientes | historial
 $f_sucursal    = (int) input('sucursal_id', 0);
+$f_desde       = trim((string) input('desde', ''));
+$f_hasta       = trim((string) input('hasta', ''));
 
 if (!tiene_permiso('ver_todas_sucursales')) {
     $f_sucursal = (int) $u['sucursal_id'];
@@ -205,6 +207,14 @@ if ($f_sucursal) {
     $where_h[]        = 'v.sucursal_id = :sid';
     $params_h['sid']  = $f_sucursal;
 }
+if ($f_desde) {
+    $where_h[]          = 'DATE(h.fecha) >= :desde';
+    $params_h['desde']  = $f_desde;
+}
+if ($f_hasta) {
+    $where_h[]          = 'DATE(h.fecha) <= :hasta';
+    $params_h['hasta']  = $f_hasta;
+}
 $sql_where_h = implode(' AND ', $where_h);
 
 $historial = db_all(
@@ -292,6 +302,23 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php if ($f_vista === 'historial'): ?>
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Desde</label>
+                <input type="date" name="desde" value="<?= e($f_desde) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Hasta</label>
+                <input type="date" name="hasta" value="<?= e($f_hasta) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+            </div>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800 self-end">Filtrar</button>
+            <?php if ($f_desde || $f_hasta): ?>
+            <a href="<?= url('flotilla_mantenimiento.php?' . http_build_query(array_filter(['vista'=>'historial','vehiculo_id'=>$f_vehiculo_id]))) ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50 self-end">Limpiar</a>
+            <?php endif; ?>
+            <?php endif; ?>
         </form>
 
         <!-- Toggle Pendientes / Historial -->
@@ -401,15 +428,15 @@ require_once __DIR__ . '/config/flotilla_nav.php';
     <?php else: ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
-                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Fecha</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide" data-orden-tipo="fecha">Fecha</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Servicio</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Vehículo</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">Km</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell" data-orden-tipo="num">Km</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Taller</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Costo</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide" data-orden-tipo="num">Costo</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Próximo</th>
                         <th class="px-4 py-3"></th>
                     </tr>

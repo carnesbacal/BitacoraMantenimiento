@@ -15,6 +15,8 @@ $puede_gestionar = tiene_permiso('administrar') || tiene_permiso('resolver');
 
 $f_vehiculo = (int) input('vehiculo_id', 0);
 $f_estado   = (string) input('estado', '');
+$f_desde    = trim((string) input('desde', ''));
+$f_hasta    = trim((string) input('hasta', ''));
 
 $errores = [];
 
@@ -122,6 +124,8 @@ $where  = ['1=1'];
 $params = [];
 if ($f_vehiculo) { $where[] = 'm.vehiculo_id = :vid'; $params['vid'] = $f_vehiculo; }
 if ($f_estado)   { $where[] = 'm.estado = :est';      $params['est'] = $f_estado; }
+if ($f_desde)    { $where[] = 'DATE(m.fecha_infraccion) >= :desde'; $params['desde'] = $f_desde; }
+if ($f_hasta)    { $where[] = 'DATE(m.fecha_infraccion) <= :hasta'; $params['hasta'] = $f_hasta; }
 if ($sid_forzado){ $where[] = 'v.sucursal_id = :sid_f'; $params['sid_f'] = $sid_forzado; }
 $sql_where = implode(' AND ', $where);
 
@@ -235,7 +239,12 @@ $responsable_ops = ['empresa'=>'La empresa','conductor'=>'El conductor','en_disp
             <option value="<?= $v ?>" <?= $f_estado === $v ? 'selected' : '' ?>><?= $label ?></option>
             <?php endforeach; ?>
         </select>
-        <?php if ($f_estado): ?>
+        <input type="date" name="desde" value="<?= e($f_desde) ?>" title="Desde"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        <input type="date" name="hasta" value="<?= e($f_hasta) ?>" title="Hasta"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        <button type="submit" class="px-3 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Filtrar</button>
+        <?php if ($f_estado || $f_desde || $f_hasta): ?>
         <a href="<?= url('flotilla_multas.php' . ($f_vehiculo ? "?vehiculo_id=$f_vehiculo" : '')) ?>"
            class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50">Limpiar</a>
         <?php endif; ?>
@@ -249,16 +258,16 @@ $responsable_ops = ['empresa'=>'La empresa','conductor'=>'El conductor','en_disp
     </div>
     <?php else: ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-        <table class="min-w-full divide-y divide-zinc-100 text-sm">
+        <table class="min-w-full divide-y divide-zinc-100 text-sm js-tabla-orden">
             <thead class="bg-zinc-50">
                 <tr>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Vehículo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Infracción</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Fecha</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase" data-orden-tipo="fecha">Fecha</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Folio</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Monto</th>
+                    <th class="text-right px-4 py-3 text-xs font-semibold text-zinc-500 uppercase" data-orden-tipo="num">Monto</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Estado</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase">Vence</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase" data-orden-tipo="fecha">Vence</th>
                     <?php if ($puede_gestionar): ?>
                     <th class="px-4 py-3"></th>
                     <?php endif; ?>

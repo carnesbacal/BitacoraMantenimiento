@@ -414,14 +414,14 @@ $res_cfg     = [
     </div>
     <?php else: ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-        <table class="min-w-full divide-y divide-zinc-100 text-sm">
+        <table class="min-w-full divide-y divide-zinc-100 text-sm js-tabla-orden">
             <thead class="bg-zinc-50">
                 <tr>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Fecha</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" data-orden-tipo="fecha">Fecha</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Vehículo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Conductor</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Km</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" data-orden-tipo="num">Km</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Resultado</th>
                     <th class="px-4 py-3"></th>
                 </tr>

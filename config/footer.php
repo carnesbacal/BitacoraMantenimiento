@@ -21,5 +21,8 @@
     });
 </script>
 
+<!-- Ordenamiento de tablas en el cliente -->
+<script src="<?= url('assets/js/tabla-orden.js') ?>?v=1"></script>
+
 </body>
 </html>

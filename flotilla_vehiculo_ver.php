@@ -56,6 +56,20 @@ if (es_post() && $puede_gestionar) {
     } else {
         $op = (string) input('op', '');
 
+        // --- Actualizar kilometraje (odómetro) ---
+        if ($op === 'actualizar_km') {
+            $km_nuevo = (int) input('km_nuevo', 0);
+            $forzar   = (int) input('forzar', 0) === 1;
+            $res = flotilla_actualizar_km($id, $km_nuevo, $es_admin, $forzar);
+            if ($res['ok']) {
+                flash_set('exito', flotilla_odometro_mensaje($res, $km_nuevo));
+            } else {
+                flash_set('error', $res['error']);
+            }
+            header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=info"));
+            exit;
+        }
+
         // --- Documento ---
         if ($op === 'doc_crear') {
             $dd = [
@@ -84,12 +98,31 @@ if (es_post() && $puede_gestionar) {
         if ($op === 'combustible_crear') {
             $km_nuevo = (int) input('km_odometro', 0);
             $litros   = (float) input('litros', 0);
-            $precio   = (float) input('precio_litro', 0);
+            $costo_modo = (string) input('costo_modo', 'precio');
+            if ($costo_modo === 'monto') {
+                $monto_total = (float) input('monto_total', 0);
+                $precio = ($litros > 0) ? round($monto_total / $litros, 3) : 0;
+            } else {
+                $precio = (float) input('precio_litro', 0);
+            }
+            $estacion_id  = (int) input('estacion_id', 0) ?: null;
+            $estacion_nom = null;
+            if ($estacion_id) {
+                $est_row = db_one("SELECT nombre FROM flotilla_estaciones WHERE id = :id", ['id' => $estacion_id]);
+                $estacion_nom = $est_row['nombre'] ?? null;
+            }
 
             if ($km_nuevo < $vehiculo['km_actual'])
                 $errores[] = 'El odómetro no puede ser menor al km actual del vehículo.';
             if ($litros <= 0) $errores[] = 'Los litros deben ser mayor a 0.';
-            if ($precio <= 0) $errores[] = 'El precio por litro debe ser mayor a 0.';
+            if ($precio <= 0) $errores[] = 'Captura el precio por litro o el monto total pagado.';
+
+            $recibo_url = null;
+            if (empty($errores)) {
+                $rec = flotilla_guardar_recibo($_FILES['recibo'] ?? []);
+                if ($rec['error']) $errores[] = $rec['error'];
+                else $recibo_url = $rec['ruta'];
+            }
 
             if (empty($errores)) {
                 // Calcular rendimiento vs carga anterior
@@ -115,7 +148,7 @@ if (es_post() && $puede_gestionar) {
                     'litros'           => $litros,
                     'precio_litro'     => $precio,
                     'tipo_combustible' => (string) input('tipo_combustible', $vehiculo['combustible_tipo']),
-                    'estacion'         => trim((string) input('estacion', '')) ?: null,
+                    'estacion'         => $estacion_nom,
                     'ticket_numero'    => trim((string) input('ticket_numero', '')) ?: null,
                     'es_tanque_lleno'  => $es_lleno,
                     'km_recorridos'    => $km_recorridos,
@@ -123,8 +156,11 @@ if (es_post() && $puede_gestionar) {
                     'notas'            => trim((string) input('notas_comb', '')) ?: null,
                     'creado_por'       => $u['id'],
                 ];
-                db_exec("INSERT INTO flotilla_combustible (vehiculo_id,conductor_id,fecha,km_odometro,litros,precio_litro,tipo_combustible,estacion,ticket_numero,es_tanque_lleno,km_recorridos,rendimiento_kml,notas,creado_por)
-                         VALUES (:vehiculo_id,:conductor_id,:fecha,:km_odometro,:litros,:precio_litro,:tipo_combustible,:estacion,:ticket_numero,:es_tanque_lleno,:km_recorridos,:rendimiento_kml,:notas,:creado_por)", $comb);
+                $comb_cols_x = ''; $comb_vals_x = '';
+                if (db_one("SHOW COLUMNS FROM flotilla_combustible LIKE 'estacion_id'")) { $comb_cols_x .= ',estacion_id'; $comb_vals_x .= ',:estacion_id'; $comb['estacion_id'] = $estacion_id; }
+                if (db_one("SHOW COLUMNS FROM flotilla_combustible LIKE 'recibo_url'")) { $comb_cols_x .= ',recibo_url'; $comb_vals_x .= ',:recibo_url'; $comb['recibo_url'] = $recibo_url; }
+                db_exec("INSERT INTO flotilla_combustible (vehiculo_id,conductor_id,fecha,km_odometro,litros,precio_litro,tipo_combustible,estacion,ticket_numero,es_tanque_lleno,km_recorridos,rendimiento_kml,notas,creado_por{$comb_cols_x})
+                         VALUES (:vehiculo_id,:conductor_id,:fecha,:km_odometro,:litros,:precio_litro,:tipo_combustible,:estacion,:ticket_numero,:es_tanque_lleno,:km_recorridos,:rendimiento_kml,:notas,:creado_por{$comb_vals_x})", $comb);
 
                 // Actualizar km_actual del vehículo
                 if ($km_nuevo > $vehiculo['km_actual']) {
@@ -287,12 +323,21 @@ if (es_post() && $puede_gestionar) {
 // Cargar datos para las tabs
 $tab         = (string) input('tab', 'info');
 $documentos  = flotilla_documentos_vehiculo($id);
-$combustible = flotilla_combustible_vehiculo($id, 10);
+$cmb_desde   = trim((string) input('cmb_desde', ''));
+$cmb_hasta   = trim((string) input('cmb_hasta', ''));
+$combustible = flotilla_combustible_vehiculo($id, 10, $cmb_desde ?: null, $cmb_hasta ?: null);
 $mantenimts  = flotilla_mantenimientos_pendientes($id);
+$gas_desde   = trim((string) input('gas_desde', ''));
+$gas_hasta   = trim((string) input('gas_hasta', ''));
+$gas_where   = ['g.vehiculo_id = :vid'];
+$gas_params  = ['vid' => $id];
+if ($gas_desde) { $gas_where[] = 'DATE(g.fecha) >= :gdesde'; $gas_params['gdesde'] = $gas_desde; }
+if ($gas_hasta) { $gas_where[] = 'DATE(g.fecha) <= :ghasta'; $gas_params['ghasta'] = $gas_hasta; }
+$gas_limit   = ($gas_desde || $gas_hasta) ? '' : 'LIMIT 30';
 $gastos      = db_all("SELECT g.*, c.nombre cat_nombre, c.color cat_color
                         FROM flotilla_gastos g
                         INNER JOIN flotilla_categorias_gasto c ON g.categoria_id = c.id
-                        WHERE g.vehiculo_id = :vid ORDER BY g.fecha DESC LIMIT 30", ['vid' => $id]);
+                        WHERE " . implode(' AND ', $gas_where) . " ORDER BY g.fecha DESC $gas_limit", $gas_params);
 $viajes      = db_all("SELECT v.*, c.nombre_completo conductor_nombre,
                                so.nombre suc_origen, sd.nombre suc_destino
                         FROM flotilla_viajes v
@@ -382,6 +427,22 @@ require_once __DIR__ . '/config/header.php';
                 <div class="bg-zinc-50 rounded-lg px-4 py-2">
                     <div class="font-display text-xl font-extrabold text-zinc-900"><?= number_format($vehiculo['km_actual']) ?></div>
                     <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Km actual</div>
+                    <?php
+                    $odo_dias   = flotilla_odometro_dias($id);
+                    $odo_umbral = flotilla_odometro_umbral();
+                    ?>
+                    <?php if ($odo_dias === null): ?>
+                    <div class="text-[10px] text-zinc-400 mt-0.5">Odómetro: sin lecturas</div>
+                    <?php else: ?>
+                    <div class="text-[10px] mt-0.5 font-semibold <?= $odo_dias > $odo_umbral ? 'text-red-600' : 'text-zinc-400' ?>"
+                         title="Umbral: <?= $odo_umbral ?> días">
+                        <?= $odo_dias > $odo_umbral ? 'Odómetro sin actualizar hace ' : 'Odómetro hace ' ?><?= $odo_dias ?> día<?= $odo_dias==1?'':'s' ?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($puede_gestionar): ?>
+                    <button type="button" onclick="document.getElementById('modal-km').classList.remove('hidden')"
+                            class="mt-0.5 text-[10px] font-bold text-bacal-700 hover:underline">Odómetro</button>
+                    <?php endif; ?>
                 </div>
                 <?php if ($rendimiento_prom): ?>
                 <div class="bg-zinc-50 rounded-lg px-4 py-2">
@@ -550,12 +611,12 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Documento</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell">Número / Proveedor</th>
-                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Vence</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="fecha">Vence</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Estado</th>
                     </tr>
                 </thead>
@@ -659,6 +720,30 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php endif; ?>
 
+        <!-- Filtro por rango de fechas -->
+        <form method="GET" class="bg-white rounded-xl border border-zinc-200 p-3 flex flex-wrap gap-2 items-end">
+            <input type="hidden" name="id" value="<?= $id ?>">
+            <input type="hidden" name="tab" value="combustible">
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Desde</label>
+                <input type="date" name="cmb_desde" value="<?= e($cmb_desde) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Hasta</label>
+                <input type="date" name="cmb_hasta" value="<?= e($cmb_hasta) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+            </div>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Filtrar</button>
+            <?php if ($cmb_desde || $cmb_hasta): ?>
+            <a href="<?= url("flotilla_vehiculo_ver.php?id=$id&tab=combustible") ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50">Limpiar</a>
+            <?php endif; ?>
+            <span class="text-xs text-zinc-400 ml-auto self-center">
+                <?= ($cmb_desde || $cmb_hasta) ? 'Mostrando cargas del rango seleccionado' : 'Mostrando las últimas 10 cargas' ?>
+            </span>
+        </form>
+
         <?php if (empty($combustible)): ?>
         <div class="bg-white rounded-xl border border-zinc-200 py-12 text-center">
             <i data-lucide="fuel" class="w-10 h-10 mx-auto text-zinc-300 mb-3"></i>
@@ -666,14 +751,14 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
-                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Fecha</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Km</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Litros</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Total</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell">km/L</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="fecha">Fecha</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Km</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Litros</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Total</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell" data-orden-tipo="num">km/L</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden lg:table-cell">Estación</th>
                     </tr>
                 </thead>
@@ -691,7 +776,14 @@ require_once __DIR__ . '/config/header.php';
                             </span>
                             <?php else: ?>—<?php endif; ?>
                         </td>
-                        <td class="px-4 py-3 text-zinc-500 hidden lg:table-cell"><?= $c['estacion'] ? e($c['estacion']) : '—' ?></td>
+                        <td class="px-4 py-3 text-zinc-500 hidden lg:table-cell">
+                            <?= $c['estacion'] ? e($c['estacion']) : '—' ?>
+                            <?php if (!empty($c['recibo_url'])): ?>
+                            <a href="<?= url('assets/' . $c['recibo_url']) ?>" target="_blank" class="ml-1 inline-flex items-center text-bacal-700 hover:underline" title="Ver recibo">
+                                <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>
+                            </a>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -707,7 +799,7 @@ require_once __DIR__ . '/config/header.php';
             <h3 class="font-display text-base font-bold text-zinc-900 mb-4 flex items-center gap-2">
                 <i data-lucide="fuel" class="w-4 h-4 text-bacal-700"></i> Registrar carga de combustible
             </h3>
-            <form method="POST" class="space-y-3">
+            <form method="POST" enctype="multipart/form-data" class="space-y-3">
                 <?= csrf_input() ?>
                 <input type="hidden" name="op" value="combustible_crear">
                 <div class="grid grid-cols-2 gap-3">
@@ -726,9 +818,21 @@ require_once __DIR__ . '/config/header.php';
                         <input type="number" name="litros" required step="0.001" min="0.1"
                                class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                     </div>
-                    <div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Capturar costo por</label>
+                        <select name="costo_modo" id="vc_modo" onchange="vcModo()" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                            <option value="precio">Precio por litro</option>
+                            <option value="monto">Monto total pagado</option>
+                        </select>
+                    </div>
+                    <div id="vc_campo_precio">
                         <label class="block text-xs font-bold text-zinc-700 mb-1">Precio / litro <span class="text-red-500">*</span></label>
-                        <input type="number" name="precio_litro" required step="0.001" min="0.01"
+                        <input type="number" name="precio_litro" step="0.001" min="0.01"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div id="vc_campo_monto" class="hidden">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Monto total <span class="text-red-500">*</span></label>
+                        <input type="number" name="monto_total" step="0.01" min="0.01"
                                class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                     </div>
                     <div>
@@ -741,8 +845,20 @@ require_once __DIR__ . '/config/header.php';
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1">Gasolinera / Estación</label>
-                    <input type="text" name="estacion" maxlength="100"
-                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    <select name="estacion_id" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        <option value="">— Sin especificar —</option>
+                        <?php foreach (flotilla_estaciones_activas() as $est): ?>
+                        <option value="<?= $est['id'] ?>"><?= e($est['nombre']) ?><?= $est['direccion'] ? ' · ' . e($est['direccion']) : '' ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if (tiene_permiso('administrar')): ?>
+                    <p class="text-[11px] text-zinc-400 mt-0.5">¿Falta una? Agrégala en <a href="<?= url('admin/catalogos.php?tab=estaciones') ?>" class="text-bacal-700 hover:underline">Catálogos › Estaciones</a>.</p>
+                    <?php endif; ?>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Recibo / factura (imagen o PDF)</label>
+                    <input type="file" name="recibo" accept="image/*,application/pdf"
+                           class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-zinc-700 mb-1">Conductor</label>
@@ -761,6 +877,13 @@ require_once __DIR__ . '/config/header.php';
                     <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Registrar</button>
                 </div>
             </form>
+            <script>
+            function vcModo(){
+                var m = document.getElementById('vc_modo').value;
+                document.getElementById('vc_campo_precio').classList.toggle('hidden', m !== 'precio');
+                document.getElementById('vc_campo_monto').classList.toggle('hidden', m !== 'monto');
+            }
+            </script>
         </div>
     </div>
 
@@ -948,6 +1071,31 @@ require_once __DIR__ . '/config/header.php';
             </button>
             <?php endif; ?>
         </div>
+
+        <!-- Filtro por rango de fechas -->
+        <form method="GET" class="bg-white rounded-xl border border-zinc-200 p-3 flex flex-wrap gap-2 items-end">
+            <input type="hidden" name="id" value="<?= $id ?>">
+            <input type="hidden" name="tab" value="gastos">
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Desde</label>
+                <input type="date" name="gas_desde" value="<?= e($gas_desde) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-500 mb-1">Hasta</label>
+                <input type="date" name="gas_hasta" value="<?= e($gas_hasta) ?>"
+                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+            </div>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Filtrar</button>
+            <?php if ($gas_desde || $gas_hasta): ?>
+            <a href="<?= url("flotilla_vehiculo_ver.php?id=$id&tab=gastos") ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50">Limpiar</a>
+            <?php endif; ?>
+            <span class="text-xs text-zinc-400 ml-auto self-center">
+                <?= ($gas_desde || $gas_hasta) ? 'Mostrando gastos del rango' : 'Mostrando los últimos 30 gastos' ?>
+            </span>
+        </form>
+
         <?php if (empty($gastos)): ?>
         <div class="bg-white rounded-xl border border-zinc-200 py-12 text-center">
             <i data-lucide="receipt" class="w-10 h-10 mx-auto text-zinc-300 mb-3"></i>
@@ -955,13 +1103,13 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
-                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Fecha</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="fecha">Fecha</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Concepto</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell">Categoría</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Monto</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Monto</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -1274,14 +1422,14 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="bg-white rounded-xl border border-zinc-200 overflow-hidden">
-            <table class="min-w-full divide-y divide-zinc-100 text-sm">
+            <table class="min-w-full divide-y divide-zinc-100 text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 text-xs text-zinc-500 uppercase tracking-wide">
                     <tr>
-                        <th class="text-left px-4 py-2.5 font-semibold">Fecha</th>
+                        <th class="text-left px-4 py-2.5 font-semibold" data-orden-tipo="fecha">Fecha</th>
                         <th class="text-left px-4 py-2.5 font-semibold">Infracción</th>
-                        <th class="text-right px-4 py-2.5 font-semibold">Monto</th>
+                        <th class="text-right px-4 py-2.5 font-semibold" data-orden-tipo="num">Monto</th>
                         <th class="text-left px-4 py-2.5 font-semibold">Estado</th>
-                        <th class="text-left px-4 py-2.5 font-semibold">Límite</th>
+                        <th class="text-left px-4 py-2.5 font-semibold" data-orden-tipo="fecha">Límite</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -1338,14 +1486,14 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="bg-white rounded-xl border border-zinc-200 overflow-hidden">
-            <table class="min-w-full divide-y divide-zinc-100 text-sm">
+            <table class="min-w-full divide-y divide-zinc-100 text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 text-xs text-zinc-500 uppercase tracking-wide">
                     <tr>
-                        <th class="text-left px-4 py-2.5 font-semibold">Fecha</th>
+                        <th class="text-left px-4 py-2.5 font-semibold" data-orden-tipo="fecha">Fecha</th>
                         <th class="text-left px-4 py-2.5 font-semibold">Tipo</th>
                         <th class="text-left px-4 py-2.5 font-semibold">Conductor</th>
                         <th class="text-left px-4 py-2.5 font-semibold">Resultado</th>
-                        <th class="px-4 py-2.5"></th>
+                        <th class="px-4 py-2.5" data-no-orden></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -1383,5 +1531,55 @@ require_once __DIR__ . '/config/header.php';
     <?php endif; ?>
 
 </div>
+
+<?php if ($puede_gestionar): ?>
+<div id="modal-km" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+            <h3 class="font-display text-lg font-bold text-zinc-900 flex items-center gap-2">
+                <i data-lucide="gauge" class="w-5 h-5 text-bacal-700"></i> Actualizar odómetro
+            </h3>
+            <button type="button" onclick="document.getElementById('modal-km').classList.add('hidden')" class="text-zinc-400 hover:text-zinc-700">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form method="post" onsubmit="return validarKmVeh(this)">
+            <?= csrf_input() ?>
+            <input type="hidden" name="op" value="actualizar_km">
+            <input type="hidden" name="forzar" value="0">
+            <div class="p-6 space-y-3">
+                <p class="text-sm text-zinc-500">Km actual registrado: <strong><?= number_format($vehiculo['km_actual']) ?> km</strong></p>
+                <div>
+                    <label class="block text-sm font-semibold text-zinc-700 mb-1">Nuevo kilometraje</label>
+                    <input type="number" name="km_nuevo" min="0" value="<?= (int) $vehiculo['km_actual'] ?>" required
+                           class="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-200">
+                <button type="button" onclick="document.getElementById('modal-km').classList.add('hidden')"
+                        class="px-4 py-2 text-sm font-semibold text-zinc-700 bg-zinc-100 rounded-lg hover:bg-zinc-200">Cancelar</button>
+                <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-bacal-700 rounded-lg hover:bg-bacal-800">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+var KM_ACTUAL_VEH = <?= (int) $vehiculo['km_actual'] ?>;
+var ES_ADMIN_VEH  = <?= $es_admin ? 'true' : 'false' ?>;
+function validarKmVeh(form){
+    var nuevo = parseInt(form.km_nuevo.value || '0', 10);
+    if (isNaN(nuevo)) return false;
+    if (nuevo < KM_ACTUAL_VEH) {
+        if (!ES_ADMIN_VEH) {
+            alert('El kilometraje ('+nuevo.toLocaleString()+') no puede ser menor al actual ('+KM_ACTUAL_VEH.toLocaleString()+' km).');
+            return false;
+        }
+        if (!confirm('El km capturado ('+nuevo.toLocaleString()+') es MENOR al actual ('+KM_ACTUAL_VEH.toLocaleString()+' km). ¿Forzar el cambio?')) return false;
+        form.forzar.value = '1';
+    }
+    return true;
+}
+</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/config/footer.php'; ?>

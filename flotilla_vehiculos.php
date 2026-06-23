@@ -39,7 +39,9 @@ $filtros = [
     'sucursal_id'=> $f_sucursal ?: null,
 ];
 
-$vista = (string) input('vista', 'tarjetas');
+// Vista por defecto: respeta la preferencia del usuario (flotilla_vista) si la tiene.
+$vista_default = (string) usuario_preferencia('flotilla_vista', 'tarjetas');
+$vista = (string) input('vista', $vista_default);
 if (!in_array($vista, ['tarjetas', 'lista'], true)) $vista = 'tarjetas';
 $url_vista = function (string $v) use ($f_q, $f_estado, $f_tipo, $f_sucursal) {
     $qs = ['vista' => $v];
@@ -151,6 +153,20 @@ if (es_post() && $puede_gestionar) {
 
 // Cargar datos
 $vehiculos   = flotilla_listar_vehiculos($filtros);
+
+// Odómetro: IDs de vehículos con lectura vencida (umbral configurable por admin)
+$odo_umbral_lista = flotilla_odometro_umbral();
+$odo_vencidos_ids = [];
+if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+    foreach (db_all(
+        "SELECT v.id FROM flotilla_vehiculos v
+         WHERE v.activo = 1
+           AND COALESCE(GREATEST(
+                 COALESCE((SELECT MAX(leido_en) FROM flotilla_odometro_historial WHERE vehiculo_id = v.id), '1970-01-01'),
+                 COALESCE((SELECT MAX(fecha) FROM flotilla_combustible WHERE vehiculo_id = v.id AND km_odometro > 0), '1970-01-01')
+               ), '1970-01-01') < DATE_SUB(NOW(), INTERVAL {$odo_umbral_lista} DAY)"
+    ) as $r) { $odo_vencidos_ids[(int) $r['id']] = true; }
+}
 $stats       = flotilla_stats($f_sucursal ?: null);
 $tipos       = db_all("SELECT * FROM flotilla_tipos_vehiculo WHERE activo=1 ORDER BY nombre");
 $sucursales  = tiene_permiso('ver_todas_sucursales')
@@ -213,6 +229,14 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                 </select>
                 <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"></i>
             </form>
+            <?php endif; ?>
+            <?php if (tiene_permiso('administrar')): ?>
+            <a href="<?= url('admin/flotilla_ajustes.php') ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5"
+               title="Ajustes de flotilla">
+                <i data-lucide="settings-2" class="w-4 h-4"></i>
+                Ajustes
+            </a>
             <?php endif; ?>
             <a href="<?= url('flotilla_conductores.php') ?>"
                class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
@@ -336,7 +360,7 @@ require_once __DIR__ . '/config/flotilla_nav.php';
     <!-- ── Vista Lista ── -->
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Vehículo</th>
@@ -344,18 +368,23 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">Tipo</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Sucursal</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Conductor</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">Km actual</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell" data-orden-tipo="num">Km actual</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Estado</th>
-                        <th class="px-4 py-3"></th>
+                        <th class="px-4 py-3" data-no-orden></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
                     <?php foreach ($vehiculos as $v): ?>
-                    <tr class="hover:bg-zinc-50 transition-colors">
+                    <tr class="hover:bg-zinc-50 transition-colors cursor-pointer"
+                        onclick="window.location='<?= url('flotilla_vehiculo_ver.php?id=' . $v['id']) ?>'">
                         <td class="px-4 py-3">
                             <div class="font-semibold text-zinc-900">
                                 <?= $v['alias'] ? e($v['alias']) . ' · ' : '' ?>
                                 <?= e($v['marca']) ?> <?= e($v['modelo']) ?>
+                                <?php if (isset($odo_vencidos_ids[(int) $v['id']])): ?>
+                                <i data-lucide="gauge" class="w-3.5 h-3.5 inline text-amber-500 ml-1"
+                                   title="Odómetro sin actualizar (más de <?= $odo_umbral_lista ?> días)"></i>
+                                <?php endif; ?>
                             </div>
                             <div class="text-xs text-zinc-500"><?= e($v['anio']) ?><?= $v['color'] ? ' · ' . e($v['color']) : '' ?></div>
                         </td>

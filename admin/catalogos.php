@@ -17,7 +17,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/admin_helpers.php';
 
 $tab = (string) input('tab', 'categorias');
-$tabs_validos = ['categorias', 'tipos', 'severidades', 'estados', 'origenes', 'medidor_tipos'];
+$tabs_validos = ['categorias', 'tipos', 'severidades', 'estados', 'origenes', 'medidor_tipos', 'estaciones'];
 if (!in_array($tab, $tabs_validos, true)) $tab = 'categorias';
 
 $errores = [];
@@ -37,6 +37,7 @@ if (es_post()) {
             'estados'       => ['tabla' => 'estados', 'label' => 'Estado', 'cols' => ['nombre', 'orden', 'color', 'es_inicial', 'es_final', 'descripcion']],
             'origenes'      => ['tabla' => 'origenes_reporte', 'label' => 'Origen', 'cols' => ['nombre']],
             'medidor_tipos' => ['tabla' => 'medidor_tipos', 'label' => 'Tipo de medidor', 'cols' => ['nombre', 'unidad', 'icono', 'color']],
+            'estaciones'    => ['tabla' => 'flotilla_estaciones', 'label' => 'Estación', 'cols' => ['nombre', 'direccion']],
         ];
 
         if (!isset($tablas_map[$tabla_actual])) {
@@ -125,6 +126,7 @@ require_once __DIR__ . '/../config/header.php';
                 'estados' => ['Estados', 'flag'],
                 'origenes' => ['Orígenes', 'inbox'],
                 'medidor_tipos' => ['Tipos de medidor', 'gauge'],
+                'estaciones' => ['Estaciones', 'fuel'],
             ];
             foreach ($tabs_labels as $key => [$label, $icono]):
                 $activo = $tab === $key;
@@ -284,6 +286,18 @@ require_once __DIR__ . '/../config/header.php';
         $items = db_all("SELECT * FROM medidor_tipos ORDER BY activo DESC, nombre ASC");
     ?>
     <?= render_lista_medidor_tipos($items) ?>
+
+    <?php elseif ($tab === 'estaciones'):
+        $estaciones_existe = (bool) db_one("SHOW TABLES LIKE 'flotilla_estaciones'");
+        $items = $estaciones_existe ? db_all("SELECT * FROM flotilla_estaciones ORDER BY activo DESC, nombre ASC") : [];
+    ?>
+    <?php if (!$estaciones_existe): ?>
+    <div class="px-4 py-3 rounded-lg bg-amber-50 border border-amber-300 text-sm text-amber-800">
+        Falta crear la tabla <strong>flotilla_estaciones</strong> en la base de datos (corre la migración de combustible).
+    </div>
+    <?php else: ?>
+    <?= render_lista_estaciones($items) ?>
+    <?php endif; ?>
 
     <?php endif; ?>
 </div>
@@ -653,6 +667,76 @@ function render_lista_medidor_tipos(array $items): string {
                         <div class="md:col-span-4 flex justify-end gap-1">
                             <button type="button" @click="editandoId = null" class="px-3 py-1 rounded border border-zinc-300 text-xs">Cancelar</button>
                             <button type="submit" class="px-3 py-1 rounded bg-bacal-700 text-white text-xs font-semibold">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php return ob_get_clean();
+}
+
+function render_lista_estaciones(array $items): string {
+    ob_start(); ?>
+    <div x-data="{ editandoId: null, mostrarNuevo: false }">
+        <div class="mb-3">
+            <button @click="mostrarNuevo = !mostrarNuevo" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold">
+                <i data-lucide="plus" class="w-4 h-4"></i> <span x-text="mostrarNuevo ? 'Cancelar' : 'Nueva estación'"></span>
+            </button>
+        </div>
+        <div x-show="mostrarNuevo" x-cloak class="bg-white rounded-xl border border-zinc-200 shadow-sm p-4 mb-4">
+            <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                <?= csrf_input() ?>
+                <input type="hidden" name="op" value="crear">
+                <input type="hidden" name="tabla" value="estaciones">
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Nombre *</label>
+                    <input type="text" name="nombre" required maxlength="120" class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase">Dirección</label>
+                    <input type="text" name="direccion" maxlength="255" class="w-full px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <div class="md:col-span-2 text-right">
+                    <button type="submit" class="px-3 py-1.5 rounded-md bg-bacal-700 text-white text-xs font-semibold">Crear estación</button>
+                </div>
+            </form>
+        </div>
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm divide-y divide-zinc-100">
+            <?php if (empty($items)): ?>
+            <div class="px-4 py-8 text-center text-sm text-zinc-400">Aún no hay estaciones registradas.</div>
+            <?php endif; ?>
+            <?php foreach ($items as $it): ?>
+            <div class="<?= !$it['activo'] ? 'opacity-50' : '' ?>">
+                <div x-show="editandoId !== <?= $it['id'] ?>" class="px-4 py-2.5 flex items-center gap-2 group">
+                    <i data-lucide="fuel" class="w-4 h-4 text-zinc-400 shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-semibold text-zinc-800"><?= e($it['nombre']) ?></div>
+                        <?php if (!empty($it['direccion'])): ?><div class="text-xs text-zinc-500"><?= e($it['direccion']) ?></div><?php endif; ?>
+                    </div>
+                    <div class="flex gap-1 opacity-0 group-hover:opacity-100">
+                        <button @click="editandoId = <?= $it['id'] ?>" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                        <form method="POST">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="op" value="toggle">
+                            <input type="hidden" name="tabla" value="estaciones">
+                            <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                            <button type="submit" class="p-1.5 rounded text-zinc-500 hover:bg-zinc-100"><i data-lucide="power" class="w-4 h-4"></i></button>
+                        </form>
+                    </div>
+                </div>
+                <div x-show="editandoId === <?= $it['id'] ?>" x-cloak class="px-4 py-2.5 bg-zinc-50">
+                    <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                        <?= csrf_input() ?>
+                        <input type="hidden" name="op" value="editar">
+                        <input type="hidden" name="tabla" value="estaciones">
+                        <input type="hidden" name="id" value="<?= $it['id'] ?>">
+                        <input type="text" name="nombre" value="<?= e($it['nombre']) ?>" required placeholder="Nombre" class="px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                        <input type="text" name="direccion" value="<?= e($it['direccion'] ?? '') ?>" placeholder="Dirección" class="px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                        <div class="md:col-span-2 flex justify-end gap-2">
+                            <button type="button" @click="editandoId = null" class="px-2 py-1 rounded border border-zinc-300 text-xs">Cancelar</button>
+                            <button type="submit" class="px-2 py-1 rounded bg-bacal-700 text-white text-xs font-semibold">Guardar</button>
                         </div>
                     </form>
                 </div>

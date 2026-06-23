@@ -16,6 +16,8 @@ $puede_gestionar = tiene_permiso('administrar') || tiene_permiso('resolver');
 // Vehículo pre-seleccionado (cuando se llega desde vehiculo_ver)
 $f_vehiculo = (int) input('vehiculo_id', 0);
 $f_estado   = (string) input('estado', '');
+$f_desde    = trim((string) input('desde', ''));
+$f_hasta    = trim((string) input('hasta', ''));
 
 $errores = [];
 
@@ -107,6 +109,8 @@ $where  = ['1=1'];
 $params = [];
 if ($f_vehiculo) { $where[] = 's.vehiculo_id = :vid'; $params['vid'] = $f_vehiculo; }
 if ($f_estado)   { $where[] = 's.estado = :est';      $params['est'] = $f_estado; }
+if ($f_desde)    { $where[] = 'DATE(s.fecha) >= :desde'; $params['desde'] = $f_desde; }
+if ($f_hasta)    { $where[] = 'DATE(s.fecha) <= :hasta'; $params['hasta'] = $f_hasta; }
 
 $sid_forzado = flotilla_sucursal_forzada();
 if ($sid_forzado) { $where[] = 'v.sucursal_id = :sid_f'; $params['sid_f'] = $sid_forzado; }
@@ -193,7 +197,12 @@ $tipos_sin = [
             <option value="<?= $v ?>" <?= $f_estado === $v ? 'selected' : '' ?>><?= $label ?></option>
             <?php endforeach; ?>
         </select>
-        <?php if ($f_estado): ?>
+        <input type="date" name="desde" value="<?= e($f_desde) ?>" title="Desde"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        <input type="date" name="hasta" value="<?= e($f_hasta) ?>" title="Hasta"
+               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        <button type="submit" class="px-3 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Filtrar</button>
+        <?php if ($f_estado || $f_desde || $f_hasta): ?>
         <a href="<?= url('flotilla_siniestros.php' . ($f_vehiculo ? "?vehiculo_id=$f_vehiculo" : '')) ?>"
            class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50">Limpiar</a>
         <?php endif; ?>

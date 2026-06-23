@@ -202,15 +202,15 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código</th>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Refacción</th>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Marca / No. parte</th>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Categoría</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Stock</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Costo</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Stock</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Costo</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">

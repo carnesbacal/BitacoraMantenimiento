@@ -205,7 +205,7 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código</th>

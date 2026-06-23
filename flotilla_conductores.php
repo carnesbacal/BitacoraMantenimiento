@@ -135,7 +135,7 @@ require_once __DIR__ . '/config/flotilla_nav.php';
     </div>
     <?php else: ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm js-tabla-orden">
             <thead class="bg-zinc-50 border-b border-zinc-200">
                 <tr>
                     <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase">Conductor</th>

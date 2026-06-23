@@ -231,16 +231,133 @@ function flotilla_actualizar_estado_documentos(): void {
 /**
  * Últimas N cargas de combustible de un vehículo.
  */
-function flotilla_combustible_vehiculo(int $vehiculo_id, int $limit = 20): array {
+function flotilla_combustible_vehiculo(int $vehiculo_id, int $limit = 20, ?string $desde = null, ?string $hasta = null): array {
+    $where  = ['f.vehiculo_id = :vid'];
+    $params = ['vid' => $vehiculo_id];
+    if ($desde) { $where[] = 'DATE(f.fecha) >= :desde'; $params['desde'] = $desde; }
+    if ($hasta) { $where[] = 'DATE(f.fecha) <= :hasta'; $params['hasta'] = $hasta; }
+    $sql_where = implode(' AND ', $where);
+    // Con filtro de fechas se muestran todas las del rango; sin filtro, las últimas $limit.
+    $sql_limit = ($desde || $hasta) ? '' : 'LIMIT ' . (int) $limit;
     return db_all(
         "SELECT f.*, c.nombre_completo conductor_nombre
          FROM flotilla_combustible f
          LEFT JOIN flotilla_conductores c ON f.conductor_id = c.id
-         WHERE f.vehiculo_id = :vid
+         WHERE $sql_where
          ORDER BY f.fecha DESC
-         LIMIT $limit",
-        ['vid' => $vehiculo_id]
+         $sql_limit",
+        $params
     );
+}
+
+/**
+ * Actualiza el kilometraje (odómetro) de un vehículo.
+ * Si el km nuevo es menor al actual, solo se permite cuando $es_admin && $forzar.
+ * Devuelve ['ok'=>bool, 'error'=>?string, 'km_actual'=>int].
+ */
+/* ===========================================================================
+ * Configuración global (clave/valor) — tabla `configuracion`
+ * ======================================================================== */
+function config_get(string $clave, $defecto = null) {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        try {
+            if (db_one("SHOW TABLES LIKE 'configuracion'")) {
+                foreach (db_all("SELECT clave, valor FROM configuracion") as $r) {
+                    $cache[$r['clave']] = $r['valor'];
+                }
+            }
+        } catch (Throwable $e) {}
+    }
+    return array_key_exists($clave, $cache) ? $cache[$clave] : $defecto;
+}
+function config_set(string $clave, string $valor): void {
+    if (!db_one("SHOW TABLES LIKE 'configuracion'")) return;
+    db_exec("INSERT INTO configuracion (clave, valor) VALUES (:c, :v)
+             ON DUPLICATE KEY UPDATE valor = :v2", ['c' => $clave, 'v' => $valor, 'v2' => $valor]);
+}
+
+/* ===========================================================================
+ * Odómetro: historial de lecturas, antigüedad y umbral
+ * ======================================================================== */
+function flotilla_odometro_umbral(): int {
+    return max(1, (int) config_get('odometro_umbral_dias', 30));
+}
+
+/** Fecha de la última lectura (historial manual o última carga de combustible con km). */
+function flotilla_odometro_ultima_fecha(int $vid): ?string {
+    $fechas = [];
+    try {
+        if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+            $r = db_one("SELECT MAX(leido_en) f FROM flotilla_odometro_historial WHERE vehiculo_id = :v", ['v' => $vid]);
+            if (!empty($r['f'])) $fechas[] = $r['f'];
+        }
+    } catch (Throwable $e) {}
+    try {
+        $r = db_one("SELECT MAX(fecha) f FROM flotilla_combustible WHERE vehiculo_id = :v AND km_odometro > 0", ['v' => $vid]);
+        if (!empty($r['f'])) $fechas[] = $r['f'];
+    } catch (Throwable $e) {}
+    return $fechas ? max($fechas) : null;
+}
+
+/** Días desde la última lectura del odómetro (null si nunca se ha registrado). */
+function flotilla_odometro_dias(int $vid): ?int {
+    $f = flotilla_odometro_ultima_fecha($vid);
+    return $f ? (int) floor((time() - strtotime($f)) / 86400) : null;
+}
+
+/** Inserta una lectura en el historial (si la tabla existe). */
+function flotilla_odometro_registrar(int $vid, int $km, string $origen, ?int $km_anterior, ?int $usuario_id): void {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) return;
+        db_exec("INSERT INTO flotilla_odometro_historial (vehiculo_id, km, km_anterior, origen, usuario_id)
+                 VALUES (:v, :km, :ka, :o, :u)",
+                ['v' => $vid, 'km' => $km, 'ka' => $km_anterior, 'o' => $origen, 'u' => $usuario_id]);
+    } catch (Throwable $e) {}
+}
+
+/** Mensaje amigable tras actualizar el odómetro, con el recorrido desde la última lectura. */
+function flotilla_odometro_mensaje(array $res, int $km_nuevo): string {
+    $msg = 'Odómetro actualizado a ' . number_format($km_nuevo) . ' km.';
+    if (($res['delta_km'] ?? null) !== null && $res['delta_km'] > 0 && ($res['delta_dias'] ?? null) !== null) {
+        $d = (int) $res['delta_dias'];
+        $tiempo = $d <= 0 ? 'el mismo día' : 'en ' . $d . ' día' . ($d == 1 ? '' : 's');
+        $msg .= ' El vehículo recorrió ' . number_format((int) $res['delta_km']) . ' km ' . $tiempo . ' desde la última lectura.';
+    }
+    return $msg;
+}
+
+/**
+ * Actualiza el kilometraje (odómetro) de un vehículo y lo registra en el historial.
+ * Si el km nuevo es menor al actual, solo se permite cuando $es_admin && $forzar.
+ * Devuelve ['ok', 'error', 'km_actual', 'delta_km', 'delta_dias', 'ultima_fecha'].
+ */
+function flotilla_actualizar_km(int $vehiculo_id, int $km_nuevo, bool $es_admin, bool $forzar = false): array {
+    $veh = db_one("SELECT km_actual FROM flotilla_vehiculos WHERE id = :id", ['id' => $vehiculo_id]);
+    if (!$veh) return ['ok' => false, 'error' => 'Vehículo no encontrado.', 'km_actual' => 0];
+    $km_actual = (int) $veh['km_actual'];
+    if ($km_nuevo < 0) {
+        return ['ok' => false, 'error' => 'El kilometraje no puede ser negativo.', 'km_actual' => $km_actual];
+    }
+    if ($km_nuevo < $km_actual) {
+        if (!$es_admin) {
+            return ['ok' => false, 'error' => "El kilometraje no puede ser menor al actual ($km_actual km).", 'km_actual' => $km_actual];
+        }
+        if (!$forzar) {
+            return ['ok' => false, 'error' => "El km es menor al actual ($km_actual km). Confirma para forzar el cambio.", 'km_actual' => $km_actual];
+        }
+    }
+    $ultima_fecha = flotilla_odometro_ultima_fecha($vehiculo_id);
+    $usuario = function_exists('usuario_actual') ? usuario_actual() : null;
+    flotilla_odometro_registrar($vehiculo_id, $km_nuevo, 'manual', $km_actual, $usuario['id'] ?? null);
+    db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id", ['km' => $km_nuevo, 'id' => $vehiculo_id]);
+    return [
+        'ok' => true, 'error' => null, 'km_actual' => $km_nuevo,
+        'delta_km'   => $km_nuevo - $km_actual,
+        'delta_dias' => $ultima_fecha ? (int) floor((time() - strtotime($ultima_fecha)) / 86400) : null,
+        'ultima_fecha' => $ultima_fecha,
+    ];
 }
 
 /**
@@ -408,4 +525,62 @@ function flotilla_icono_combustible(string $tipo): string {
         'gas'       => 'flame',
         default     => 'fuel',
     };
+}
+
+
+/* ===========================================================================
+ * Estaciones de combustible y recibos
+ * ======================================================================== */
+
+/** Estaciones activas del catálogo (vacío si la tabla no existe aún). */
+function flotilla_estaciones_activas(): array {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_estaciones'")) return [];
+        return db_all("SELECT id, nombre, direccion FROM flotilla_estaciones WHERE activo = 1 ORDER BY nombre");
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/** Valida que el archivo subido sea imagen o PDF (por contenido, no por nombre). */
+function flotilla_recibo_valido(string $tmp, string $name): bool {
+    $info = @getimagesize($tmp);
+    if ($info !== false && !empty($info['mime'])
+        && in_array($info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        return true;
+    }
+    $fh = @fopen($tmp, 'rb');
+    $head = $fh ? (string) fread($fh, 4) : '';
+    if ($fh) fclose($fh);
+    return substr($head, 0, 4) === '%PDF';
+}
+
+/**
+ * Guarda el recibo/factura de una carga. Devuelve ['ruta'=>?string, 'error'=>?string].
+ * Si no se subió archivo, ['ruta'=>null,'error'=>null] (no es error).
+ */
+function flotilla_guardar_recibo(array $file): array {
+    $err = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($err === UPLOAD_ERR_NO_FILE || empty($file['name'])) {
+        return ['ruta' => null, 'error' => null];
+    }
+    if ($err !== UPLOAD_ERR_OK) {
+        return ['ruta' => null, 'error' => 'No se pudo subir el recibo.'];
+    }
+    if ((int) ($file['size'] ?? 0) > 10 * 1024 * 1024) {
+        return ['ruta' => null, 'error' => 'El recibo excede el tamaño máximo (10 MB).'];
+    }
+    if (!flotilla_recibo_valido($file['tmp_name'], $file['name'])) {
+        return ['ruta' => null, 'error' => 'El recibo debe ser una imagen (JPG, PNG, WEBP, GIF) o PDF.'];
+    }
+    $dir_base   = __DIR__ . '/../assets/uploads';
+    $subcarpeta = date('Y/m');
+    $dir_final  = "$dir_base/$subcarpeta";
+    if (!is_dir($dir_final)) @mkdir($dir_final, 0755, true);
+    $ext    = preg_replace('/[^a-z0-9]/i', '', strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)));
+    $nombre = 'recibo_' . bin2hex(random_bytes(12)) . ($ext ? ".$ext" : '');
+    if (!move_uploaded_file($file['tmp_name'], "$dir_final/$nombre")) {
+        return ['ruta' => null, 'error' => 'No se pudo guardar el recibo en el servidor.'];
+    }
+    return ['ruta' => "uploads/$subcarpeta/$nombre", 'error' => null];
 }

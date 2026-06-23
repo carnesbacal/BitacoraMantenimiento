@@ -21,6 +21,8 @@ $f_tipo       = (int) input('tipo_id', 0);
 $f_vehiculo   = (int) input('vehiculo_id', 0);
 $f_conductor  = (int) input('conductor_id', 0);
 $f_sucursal   = (int) input('sucursal_id', 0);
+$f_desde      = trim((string) input('desde', ''));
+$f_hasta      = trim((string) input('hasta', ''));
 
 if (!tiene_permiso('ver_todas_sucursales')) {
     $f_sucursal = (int) $u['sucursal_id'];
@@ -153,6 +155,14 @@ if ($f_sucursal) {
     $where[]          = 'v.sucursal_id = :sid';
     $params['sid']    = $f_sucursal;
 }
+if ($f_desde) {
+    $where[]          = 'DATE(d.fecha_vence) >= :desde';
+    $params['desde']  = $f_desde;
+}
+if ($f_hasta) {
+    $where[]          = 'DATE(d.fecha_vence) <= :hasta';
+    $params['hasta']  = $f_hasta;
+}
 $sql_where = implode(' AND ', $where);
 
 $documentos = db_all(
@@ -269,6 +279,14 @@ function badge_doc(string $estado): string {
             </option>
             <?php endforeach; ?>
         </select>
+        <div>
+            <input type="date" name="desde" value="<?= e($f_desde) ?>" title="Vence desde"
+                   class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        </div>
+        <div>
+            <input type="date" name="hasta" value="<?= e($f_hasta) ?>" title="Vence hasta"
+                   class="px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white">
+        </div>
         <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">
             Filtrar
         </button>
@@ -289,16 +307,16 @@ function badge_doc(string $estado): string {
     <?php else: ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Tipo</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Asociado a</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">No. documento</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Proveedor</th>
-                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Vencimiento</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide" data-orden-tipo="fecha">Vencimiento</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Estado</th>
-                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell">Monto</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden md:table-cell" data-orden-tipo="num">Monto</th>
                         <th class="px-4 py-3"></th>
                     </tr>
                 </thead>

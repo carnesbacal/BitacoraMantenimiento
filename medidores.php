@@ -361,15 +361,15 @@ else:
 <!-- Tabla -->
 <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm js-tabla-orden">
             <thead>
                 <tr class="border-b border-zinc-200 bg-zinc-50">
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Medidor</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Sucursal</th>
-                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Última lectura</th>
-                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tarifa</th>
-                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Acciones</th>
+                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Última lectura</th>
+                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Tarifa</th>
+                    <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-no-orden>Acciones</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100">

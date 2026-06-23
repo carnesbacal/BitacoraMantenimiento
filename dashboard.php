@@ -396,6 +396,27 @@ if ($flotilla_siniestros > 0) {
         'enlace' => url('flotilla_siniestros.php')];
 }
 
+// Odómetro desactualizado (umbral configurable por admin)
+require_once __DIR__ . '/config/flotilla_helpers.php';
+$odo_umbral_dash = flotilla_odometro_umbral();
+if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+    $odo_vencidos = (int)(db_one(
+        "SELECT COUNT(*) c FROM flotilla_vehiculos v
+         WHERE v.activo = 1 AND v.estado <> 'baja'"
+        . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '') . "
+           AND COALESCE(GREATEST(
+                 COALESCE((SELECT MAX(leido_en) FROM flotilla_odometro_historial WHERE vehiculo_id = v.id), '1970-01-01'),
+                 COALESCE((SELECT MAX(fecha)    FROM flotilla_combustible        WHERE vehiculo_id = v.id AND km_odometro > 0), '1970-01-01')
+               ), '1970-01-01') < DATE_SUB(NOW(), INTERVAL {$odo_umbral_dash} DAY)"
+    )['c'] ?? 0);
+    if ($odo_vencidos > 0) {
+        $alertas[] = ['tipo' => 'warning', 'icono' => 'gauge',
+            'titulo' => "{$odo_vencidos} vehículo(s) con odómetro sin actualizar",
+            'mensaje' => "Sin lectura de odómetro en más de {$odo_umbral_dash} días.",
+            'enlace' => url('flotilla_vehiculos.php')];
+    }
+}
+
 $h = (int) date('G');
 $saludo = $h < 12 ? 'Buenos días' : ($h < 19 ? 'Buenas tardes' : 'Buenas noches');
 $meses_es = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
