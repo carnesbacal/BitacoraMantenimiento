@@ -38,7 +38,6 @@ if ($es_exportacion) {
     csv_fila(['Críticas', $m['criticas']]);
     csv_fila(['Reincidencias', $m['reincidencias']]);
     csv_fila(['% Reincidencia', $m['pct_reincidencia'] . '%']);
-    csv_fila(['Tiempo promedio respuesta (min)', $m['avg_respuesta'] ?? '—']);
     csv_fila(['Tiempo promedio resolución (min)', $m['avg_resolucion'] ?? '—']);
     csv_fila(['SLA cumplido', $m['sla_pct'] !== null ? $m['sla_pct'] . '%' : '—']);
     csv_fila(['']);

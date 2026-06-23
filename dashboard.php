@@ -311,7 +311,7 @@ $sla_vencido = (int) db_one(
 if ($sla_vencido > 0) {
     $alertas[] = ['tipo' => 'critica', 'icono' => 'flame',
         'titulo' => "$sla_vencido incidencia(s) con SLA vencido",
-        'mensaje' => 'Pasaron el tiempo de respuesta acordado y siguen abiertas.',
+        'mensaje' => 'Pasaron su fecha límite de SLA y siguen abiertas.',
         'enlace' => url('bitacora.php?sla_vencido=1')];
 }
 

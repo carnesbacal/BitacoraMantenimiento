@@ -161,10 +161,6 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
                 </div>
                 <?php endif; ?>
                 <div class="flex justify-between gap-2 pt-1.5 border-t border-zinc-100 mt-1.5">
-                    <dt class="text-zinc-500 font-semibold">T. respuesta:</dt>
-                    <dd class="text-zinc-900 font-bold"><?= e(fmt_duracion($i['tiempo_respuesta_min'])) ?></dd>
-                </div>
-                <div class="flex justify-between gap-2">
                     <dt class="text-zinc-500 font-semibold">T. resolución:</dt>
                     <dd class="text-zinc-900 font-bold"><?= e(fmt_duracion($i['tiempo_resolucion_min'])) ?></dd>
                 </div>

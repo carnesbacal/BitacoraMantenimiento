@@ -50,7 +50,7 @@ $reportes = [
     ],
     [
         'titulo' => 'Análisis de SLA',
-        'descripcion' => 'Cumplimiento de acuerdos de nivel de servicio. Detecta puntos débiles en tiempos de respuesta y resolución.',
+        'descripcion' => 'Cumplimiento de acuerdos de nivel de servicio. Detecta puntos débiles en los tiempos de resolución y el cumplimiento de SLA.',
         'icono' => 'target',
         'color' => '#DC2626',
         'url' => url('reportes/reporte_sla.php'),

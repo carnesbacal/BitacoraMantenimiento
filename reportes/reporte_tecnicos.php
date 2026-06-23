@@ -62,7 +62,7 @@ if ($es_exportacion) {
     csv_fila(['Período:', $periodo['etiqueta']]);
     csv_fila(['']);
     $cols = ['Técnico', 'Rol', 'Total asignadas', 'Resueltas', 'Abiertas', '% Cierre',
-             'Críticas atendidas', 'T. respuesta prom.', 'T. resolución prom.',
+             'Críticas atendidas', 'T. resolución prom.',
              'SLA cumplido', 'SLA incumplido', '% SLA'];
     if ($ver_costos) {
         $cols[] = 'Horas trabajadas';
@@ -75,7 +75,6 @@ if ($es_exportacion) {
             $t['nombre_completo'], $t['rol_nombre'],
             $t['total_asignadas'], $t['resueltas'], $t['abiertas'], $t['pct_resolucion'] . '%',
             $t['criticas_atendidas'],
-            $t['avg_respuesta'] !== null ? fmt_duracion((int) $t['avg_respuesta']) : '—',
             $t['avg_resolucion'] !== null ? fmt_duracion((int) $t['avg_resolucion']) : '—',
             $t['sla_cumplido'], $t['sla_incumplido'],
             $t['sla_pct'] !== null ? $t['sla_pct'] . '%' : '—',
@@ -192,10 +191,6 @@ require_once __DIR__ . '/../config/header.php';
 
             <!-- Métricas adicionales -->
             <dl class="space-y-1.5 text-xs">
-                <div class="flex justify-between gap-2">
-                    <dt class="text-zinc-500">T. respuesta prom.</dt>
-                    <dd class="font-semibold text-zinc-900"><?= $t['avg_respuesta'] !== null ? e(fmt_duracion((int) $t['avg_respuesta'])) : '—' ?></dd>
-                </div>
                 <div class="flex justify-between gap-2">
                     <dt class="text-zinc-500">T. resolución prom.</dt>
                     <dd class="font-semibold text-zinc-900"><?= $t['avg_resolucion'] !== null ? e(fmt_duracion((int) $t['avg_resolucion'])) : '—' ?></dd>

@@ -211,7 +211,7 @@ if ($es_exportacion) {
         'Severidad', 'Estado', 'Equipo', 'Reportó',
         'Asignado a', 'Reincidencia',
         'Fecha del evento', 'Fecha de atención', 'Fecha de resolución',
-        'Tiempo respuesta (min)', 'Tiempo resolución (min)',
+        'Tiempo resolución (min)',
         'SLA cumplido', 'Horas trabajadas', 'Costo total', 'Descripción',
     ]);
 
@@ -225,7 +225,7 @@ if ($es_exportacion) {
             $r['reportado_por_nombre'],
             $r['asignado_a_nombre'] ?? '', $r['es_reincidencia'] ? 'Sí' : 'No',
             $r['fecha_evento'], $r['fecha_atencion'] ?? '', $r['fecha_resolucion'] ?? '',
-            $r['tiempo_respuesta_min'] ?? '', $r['tiempo_resolucion_min'] ?? '',
+            $r['tiempo_resolucion_min'] ?? '',
             $r['sla_cumplido'] === null ? '' : ($r['sla_cumplido'] ? 'Sí' : 'No'),
             $r['horas_trabajadas'] ?? '',
             number_format($costo_csv, 2, '.', ''),

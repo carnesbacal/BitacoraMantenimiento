@@ -185,7 +185,7 @@ require_once __DIR__ . '/../config/header.php';
                     <?php if ($pct_global === null): ?>
                     Sin incidencias cerradas en el período para evaluar SLA.
                     <?php elseif ($pct_global >= 80): ?>
-                    Excelente desempeño. El equipo cumple consistentemente los acuerdos de tiempo de respuesta.
+                    Excelente desempeño. El equipo cumple consistentemente los acuerdos de nivel de servicio (SLA).
                     <?php elseif ($pct_global >= 50): ?>
                     Desempeño aceptable, pero con margen de mejora. Revisa las severidades con menor cumplimiento.
                     <?php else: ?>

@@ -1107,10 +1107,6 @@ require_once __DIR__ . '/config/header.php';
                     <?php endif; ?>
                     <div class="border-t border-zinc-100 pt-2 mt-2"></div>
                     <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500" title="Desde que se registró la incidencia hasta que se inició la atención">Tiempo de respuesta</dt>
-                        <dd class="text-zinc-900 font-semibold text-right"><?= e(fmt_duracion($incidencia['tiempo_respuesta_min'])) ?></dd>
-                    </div>
-                    <div class="flex justify-between gap-2">
                         <dt class="text-zinc-500" title="Desde que ocurrió el evento hasta que se resolvió">Tiempo de resolución</dt>
                         <dd class="text-zinc-900 font-semibold text-right"><?= e(fmt_duracion($incidencia['tiempo_resolucion_min'])) ?></dd>
                     </div>
