@@ -517,17 +517,33 @@ require_once __DIR__ . '/config/header.php';
                 <?php else: ?>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <?php foreach ($adjuntos as $a):
-                        $es_img = str_starts_with((string) $a['tipo_mime'], 'image/');
+                        $mime     = (string) $a['tipo_mime'];
+                        $es_img   = str_starts_with($mime, 'image/');
+                        $es_pdf   = ($mime === 'application/pdf');
+                        $ext      = strtoupper(pathinfo($a['nombre_original'], PATHINFO_EXTENSION));
                         $ruta_url = url('assets/' . $a['ruta']);
+                        $tipo_color = $es_pdf ? 'text-red-600'
+                            : (in_array($ext, ['DOC','DOCX'], true) ? 'text-blue-600'
+                            : (in_array($ext, ['XLS','XLSX','CSV'], true) ? 'text-emerald-600'
+                            : (in_array($ext, ['ZIP','RAR'], true) ? 'text-amber-600' : 'text-zinc-500')));
+                        $tipo_icono = in_array($ext, ['XLS','XLSX','CSV'], true) ? 'file-spreadsheet'
+                            : (in_array($ext, ['ZIP','RAR'], true) ? 'file-archive' : 'file-text');
                     ?>
                     <div class="border border-zinc-200 rounded-lg overflow-hidden group relative">
                         <?php if ($es_img): ?>
                         <a href="<?= e($ruta_url) ?>" target="_blank" class="block aspect-square bg-zinc-50">
                             <img src="<?= e($ruta_url) ?>" alt="<?= e($a['nombre_original']) ?>" class="w-full h-full object-cover">
                         </a>
+                        <?php elseif ($es_pdf): ?>
+                        <div class="relative aspect-square bg-zinc-100">
+                            <iframe src="<?= e($ruta_url) ?>#toolbar=0&navpanes=0&scrollbar=0&view=FitH" class="w-full h-full pointer-events-none" loading="lazy" title="<?= e($a['nombre_original']) ?>"></iframe>
+                            <a href="<?= e($ruta_url) ?>" target="_blank" class="absolute inset-0" title="Abrir PDF"></a>
+                            <span class="absolute bottom-1 right-1 text-[8px] font-extrabold bg-red-600 text-white px-1 rounded">PDF</span>
+                        </div>
                         <?php else: ?>
-                        <a href="<?= e($ruta_url) ?>" target="_blank" class="block aspect-square bg-zinc-50 flex items-center justify-center">
-                            <i data-lucide="file-text" class="w-10 h-10 text-zinc-400"></i>
+                        <a href="<?= e($ruta_url) ?>" target="_blank" class="block aspect-square bg-zinc-50 flex flex-col items-center justify-center gap-1">
+                            <i data-lucide="<?= $tipo_icono ?>" class="w-10 h-10 <?= $tipo_color ?>"></i>
+                            <span class="text-[9px] font-bold <?= $tipo_color ?>"><?= e($ext) ?></span>
                         </a>
                         <?php endif; ?>
                         <div class="p-2 bg-white border-t border-zinc-100">
@@ -1072,6 +1088,10 @@ require_once __DIR__ . '/config/header.php';
                         <dd class="text-zinc-900 font-medium text-right"><?= e(fmt_fecha($incidencia['fecha_evento'])) ?></dd>
                     </div>
                     <div class="flex justify-between gap-2">
+                        <dt class="text-zinc-500">Registrada</dt>
+                        <dd class="text-zinc-900 font-medium text-right"><?= e(fmt_fecha($incidencia['creado_en'])) ?></dd>
+                    </div>
+                    <div class="flex justify-between gap-2">
                         <dt class="text-zinc-500">Atención iniciada</dt>
                         <dd class="text-zinc-900 font-medium text-right"><?= $incidencia['fecha_atencion'] ? e(fmt_fecha($incidencia['fecha_atencion'])) : '—' ?></dd>
                     </div>
@@ -1087,13 +1107,25 @@ require_once __DIR__ . '/config/header.php';
                     <?php endif; ?>
                     <div class="border-t border-zinc-100 pt-2 mt-2"></div>
                     <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500">Tiempo de respuesta</dt>
+                        <dt class="text-zinc-500" title="Desde que se registró la incidencia hasta que se inició la atención">Tiempo de respuesta</dt>
                         <dd class="text-zinc-900 font-semibold text-right"><?= e(fmt_duracion($incidencia['tiempo_respuesta_min'])) ?></dd>
                     </div>
                     <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500">Tiempo de resolución</dt>
+                        <dt class="text-zinc-500" title="Desde que ocurrió el evento hasta que se resolvió">Tiempo de resolución</dt>
                         <dd class="text-zinc-900 font-semibold text-right"><?= e(fmt_duracion($incidencia['tiempo_resolucion_min'])) ?></dd>
                     </div>
+                    <?php $ult_edit = $historial[0] ?? null; ?>
+                    <?php if ($ult_edit): ?>
+                    <div class="flex justify-between gap-2 border-t border-zinc-100 pt-2 mt-1">
+                        <dt class="text-zinc-500">Última edición</dt>
+                        <dd class="text-zinc-900 font-medium text-right">
+                            <?= e(fmt_fecha($ult_edit['creado_en'])) ?>
+                            <?php if (!empty($ult_edit['usuario_nombre'])): ?>
+                            <span class="block text-[10px] text-zinc-400"><?= e($ult_edit['usuario_nombre']) ?></span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <?php endif; ?>
                 </dl>
             </div>
 

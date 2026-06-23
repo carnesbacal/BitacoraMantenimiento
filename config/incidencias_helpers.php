@@ -15,9 +15,9 @@ require_once __DIR__ . '/helpers.php';
 // ============================================================================
 // Constantes
 // ============================================================================
-const ADJUNTOS_MAX_TAMANO  = 10 * 1024 * 1024;     // 10 MB por archivo
-const ADJUNTOS_TOTAL_MAX   = 50 * 1024 * 1024;     // 50 MB en total por incidencia
-const ADJUNTOS_MAX_ARCHIVOS = 10;
+const ADJUNTOS_MAX_TAMANO  = 30 * 1024 * 1024;     // 30 MB por archivo
+const ADJUNTOS_TOTAL_MAX   = 0;                    // 0 = sin límite total
+const ADJUNTOS_MAX_ARCHIVOS = 0;                   // 0 = ilimitado
 const ADJUNTOS_TIPOS_PERMITIDOS = [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'application/pdf',
@@ -211,7 +211,7 @@ function procesar_adjuntos(int $incidencia_id, array $files, int $usuario_id): a
     }
 
     $total = count($files['name']);
-    if ($total > ADJUNTOS_MAX_ARCHIVOS) {
+    if (ADJUNTOS_MAX_ARCHIVOS > 0 && $total > ADJUNTOS_MAX_ARCHIVOS) {
         $errores[] = "Máximo " . ADJUNTOS_MAX_ARCHIVOS . " archivos por incidencia.";
         return [$exitos, $errores];
     }
@@ -295,7 +295,7 @@ function procesar_adjuntos(int $incidencia_id, array $files, int $usuario_id): a
  */
 function recalcular_tiempos_incidencia(int $incidencia_id): void {
     $row = db_one(
-        "SELECT fecha_evento, fecha_atencion, fecha_resolucion, fecha_limite_sla
+        "SELECT creado_en, fecha_evento, fecha_atencion, fecha_resolucion, fecha_limite_sla
          FROM incidencias WHERE id = :id",
         ['id' => $incidencia_id]
     );
@@ -305,12 +305,15 @@ function recalcular_tiempos_incidencia(int $incidencia_id): void {
     $tres = null;
     $sla = null;
 
-    if ($row['fecha_evento'] && $row['fecha_atencion']) {
-        $diff = strtotime($row['fecha_atencion']) - strtotime($row['fecha_evento']);
+    if ($row['creado_en'] && $row['fecha_atencion']) {
+        // Tiempo de respuesta = desde que se registró hasta que se inició la atención
+        // (anclado a la creación: inmune a fechas de evento hacia atrás y a ediciones posteriores)
+        $diff = strtotime($row['fecha_atencion']) - strtotime($row['creado_en']);
         $tr   = max(0, (int) round($diff / 60));
     }
-    if ($row['fecha_atencion'] && $row['fecha_resolucion']) {
-        $diff = strtotime($row['fecha_resolucion']) - strtotime($row['fecha_atencion']);
+    if ($row['fecha_evento'] && $row['fecha_resolucion']) {
+        // Tiempo de resolución = desde que ocurrió el evento hasta que se resolvió
+        $diff = strtotime($row['fecha_resolucion']) - strtotime($row['fecha_evento']);
         $tres = max(0, (int) round($diff / 60));
     }
     if ($row['fecha_resolucion'] && $row['fecha_limite_sla']) {
