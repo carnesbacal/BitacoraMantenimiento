@@ -171,17 +171,14 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $anuncio_edit)):
 
             <div>
                 <label class="block text-xs font-bold text-zinc-700 mb-2 uppercase tracking-wide">Tipo</label>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <?php
-                    $tipo_actual = $es_edicion ? $a['tipo'] : (string) input('tipo', 'info');
-                    foreach (ANUNCIO_TIPOS as $key => $cfg):
-                    ?>
-                    <label class="cursor-pointer">
-                        <input type="radio" name="tipo" value="<?= $key ?>" class="sr-only peer"
+                <?php $tipo_actual = $es_edicion ? $a['tipo'] : (string) input('tipo', 'info'); ?>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2" x-data="{ tipoSel: '<?= e($tipo_actual) ?>' }">
+                    <?php foreach (ANUNCIO_TIPOS as $key => $cfg): ?>
+                    <label class="cursor-pointer select-none">
+                        <input type="radio" name="tipo" value="<?= $key ?>" class="sr-only" x-model="tipoSel"
                                <?= $tipo_actual === $key ? 'checked' : '' ?>>
-                        <div class="p-3 rounded-lg border-2 text-center transition-all peer-checked:border-2"
-                             style="border-color: <?= $tipo_actual === $key ? $cfg['color'] : '#e4e4e7' ?>;
-                                    background-color: <?= $tipo_actual === $key ? $cfg['color'] . '15' : 'transparent' ?>">
+                        <div class="p-3 rounded-lg border-2 text-center transition-all"
+                             :style="tipoSel === '<?= $key ?>' ? 'border-color: <?= $cfg['color'] ?>; background-color: <?= $cfg['color'] ?>15' : 'border-color: #e4e4e7; background-color: transparent'">
                             <i data-lucide="<?= e($cfg['icono']) ?>" class="w-5 h-5 mx-auto mb-1" style="color: <?= e($cfg['color']) ?>"></i>
                             <div class="text-xs font-semibold" style="color: <?= e($cfg['color']) ?>"><?= e($cfg['nombre']) ?></div>
                         </div>
