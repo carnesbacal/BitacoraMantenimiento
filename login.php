@@ -146,7 +146,7 @@ if (es_post()) {
         <div class="corner-mark bl"></div>
         <div class="corner-mark br"></div>
 
-        <div class="relative z-10 flex flex-col justify-between p-12 w-full text-white">
+        <div class="relative z-10 flex flex-col p-12 w-full text-white">
 
             <!-- Logo arriba -->
             <div class="flex items-center gap-3">
@@ -154,31 +154,45 @@ if (es_post()) {
                     B
                 </div>
                 <div>
-                    <div class="font-display font-bold text-lg leading-tight">Carnes Bacal</div>
-                    <div class="text-[11px] text-gold-400 uppercase tracking-widest font-semibold">Sistema Interno</div>
+                    <img src="assets/img/logo-blanco.png" alt="Carnes Bacal" onerror="this.style.display='none'" class="h-7 w-auto">
+                    <div class="text-[11px] text-gold-400 uppercase tracking-widest font-semibold mt-1">SIGMA · Sistema Interno</div>
                 </div>
             </div>
 
             <!-- Tagline central -->
-            <div class="space-y-6">
-                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs font-semibold uppercase tracking-wider">
-                    <span class="w-1.5 h-1.5 rounded-full bg-gold-400 animate-pulse"></span>
-                    Bitácora de incidencias
+            <div class="flex-1 flex flex-col justify-center items-center text-center">
+                <div class="w-full max-w-lg space-y-5">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs font-semibold uppercase tracking-wider">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gold-400 animate-pulse"></span>
+                        Bitácora de Mantenimiento Industrial
+                    </div>
+                    <h2 class="font-display text-7xl xl:text-8xl font-extrabold leading-[0.9] tracking-tight">
+                        <span class="text-gold-400">SIGMA</span>
+                    </h2>
+                    <p class="font-display text-2xl xl:text-3xl font-bold leading-tight">
+                        Control total de tu mantenimiento y activos, en un solo lugar.
+                    </p>
+                    <p class="text-white/90 text-base leading-snug font-semibold">
+                        <span class="text-gold-400">S</span>istema <span class="text-gold-400">I</span>ntegral de <span class="text-gold-400">G</span>estión de <span class="text-gold-400">M</span>antenimiento y <span class="text-gold-400">A</span>ctivos.
+                    </p>
+                    <p class="text-white/65 text-sm leading-relaxed">
+                        Incidencias, equipos, refacciones, herramientas, medidores y flotilla — todo con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
+                    </p>
+                    <div class="flex flex-wrap gap-2 justify-center pt-1">
+                        <?php foreach (['Incidencias', 'Equipos', 'Refacciones', 'Herramientas', 'Medidores', 'Flotilla'] as $chip): ?>
+                        <span class="px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[11px] font-semibold text-white/85"><?= $chip ?></span>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-                <h2 class="font-display text-5xl xl:text-6xl font-extrabold leading-[1.05]">
-                    Control total<br>
-                    de <span class="text-gold-400">Mantenimiento</span><br>
-                    en un solo lugar.
-                </h2>
-                <p class="text-white/70 text-base max-w-md leading-relaxed">
-                    Registra, asigna y resuelve incidencias de mantenimiento con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
-                </p>
             </div>
 
             <!-- Footer marca -->
             <div class="flex items-center justify-between text-xs text-white/50">
                 <div>© <?= date('Y') ?> Carnes Bacal. Uso interno.</div>
-                <div class="font-mono">v<?= APP_VERSION ?></div>
+                <div class="flex items-center gap-4">
+                    <span>Desarrollado por <span class="font-mono font-semibold text-white/75">&lt;LFRC/&gt;</span></span>
+                    <span class="font-mono">v<?= APP_VERSION ?></span>
+                </div>
             </div>
         </div>
     </div>

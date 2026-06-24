@@ -703,8 +703,11 @@ function busquedaGlobal() {
                     B
                 </div>
                 <div x-show="sidebarAbierto" x-transition.opacity class="overflow-hidden">
-                    <div class="font-display font-bold text-zinc-900 text-base leading-tight">Carnes Bacal</div>
-                    <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Bitácora · Mantenimiento</div>
+                    <div class="font-display font-extrabold text-bacal-700 text-sm leading-tight tracking-wide">SIGMA</div>
+                    <img src="<?= url('assets/img/logo-negro.png') ?>" alt="Carnes Bacal" onerror="this.style.display='none'"
+                         class="h-5 w-auto block dark:hidden mt-0.5">
+                    <img src="<?= url('assets/img/logo-blanco.png') ?>" alt="Carnes Bacal" onerror="this.style.display='none'"
+                         class="h-5 w-auto hidden dark:block mt-0.5">
                 </div>
             </a>
         </div>
