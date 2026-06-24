@@ -451,12 +451,13 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                         <th class="text-right pb-2 font-semibold">Total</th>
                         <th class="text-right pb-2 font-semibold hidden md:table-cell">Combustible</th>
                         <th class="text-right pb-2 font-semibold hidden md:table-cell">Mantenimiento</th>
-                        <th class="pb-2 w-36 hidden lg:table-cell"></th>
+                        <th class="text-right pb-2 font-semibold w-36 hidden lg:table-cell" title="Porcentaje que representó este vehículo del gasto total de la flotilla en el período seleccionado">% del total</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
                 <?php foreach ($por_vehiculo as $vg):
-                    $pct_v = $max_vehiculo > 0 ? ($vg['gasto_total'] / $max_vehiculo) * 100 : 0;
+                    $gasto_total_periodo = (float)($kpis['gasto_total'] ?? 0);
+                    $pct_v = $gasto_total_periodo > 0 ? ($vg['gasto_total'] / $gasto_total_periodo) * 100 : 0;
                 ?>
                 <tr>
                     <td class="py-2.5 pr-4">
@@ -473,9 +474,9 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                     <td class="py-2.5 hidden lg:table-cell pl-4">
                         <div class="flex items-center gap-2">
                             <div class="flex-1 bg-zinc-100 rounded-full h-1.5">
-                                <div class="h-1.5 rounded-full bg-bacal-700" style="width:<?= $pct_v ?>%"></div>
+                                <div class="h-1.5 rounded-full bg-bacal-700" style="width:<?= min(100, $pct_v) ?>%"></div>
                             </div>
-                            <span class="text-xs text-zinc-400 w-7 text-right"><?= round($pct_v) ?>%</span>
+                            <span class="text-xs text-zinc-400 w-9 text-right"><?= round($pct_v, 1) ?>%</span>
                         </div>
                     </td>
                 </tr>
