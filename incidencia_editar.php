@@ -687,7 +687,44 @@ require_once __DIR__ . '/config/header.php';
             </h3>
             <p class="text-xs text-zinc-500 mb-3">Los adjuntos existentes se mantienen. Para eliminar, ve al detalle de la incidencia.</p>
             <input type="file" name="adjuntos[]" multiple
-                   class="block w-full text-sm text-zinc-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                   x-ref="inputFiles" @change="agregarArchivos($event.target.files)" class="hidden">
+            <div @click="$refs.inputFiles.click()"
+                 @dragover.prevent="dragActivo = true" @dragleave.prevent="dragActivo = false"
+                 @drop.prevent="dragActivo = false; agregarArchivos($event.dataTransfer.files)"
+                 :class="dragActivo ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-300 hover:border-zinc-400'"
+                 class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors">
+                <i data-lucide="upload-cloud" class="w-8 h-8 mx-auto text-zinc-400 mb-2"></i>
+                <p class="text-sm font-medium text-zinc-700">Haz clic o arrastra archivos aquí</p>
+                <p class="text-xs text-zinc-500 mt-1" x-show="archivosSeleccionados.length === 0">Sin archivos seleccionados</p>
+            </div>
+            <div class="mt-3 mb-2 text-xs font-semibold text-bacal-700" x-show="archivosSeleccionados.length > 0">
+                <span x-text="archivosSeleccionados.length"></span> archivo(s) seleccionado(s)
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2" x-show="archivosSeleccionados.length > 0">
+                <template x-for="(f, idx) in archivosSeleccionados" :key="idx">
+                    <div class="relative border border-zinc-200 rounded-lg overflow-hidden group bg-white">
+                        <div class="aspect-square bg-zinc-50 flex items-center justify-center">
+                            <template x-if="f.type && f.type.startsWith('image/')">
+                                <img :src="f._url || (f._url = URL.createObjectURL(f))" class="w-full h-full object-cover" alt="">
+                            </template>
+                            <template x-if="!(f.type && f.type.startsWith('image/'))">
+                                <div class="w-9 h-11 rounded-sm bg-white border border-zinc-200 shadow-sm flex items-end justify-center pb-1">
+                                    <span class="text-[9px] font-extrabold text-bacal-600 uppercase" x-text="(f.name.split('.').pop() || '?').slice(0,4)"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="px-1.5 py-1 border-t border-zinc-100">
+                            <div class="text-[10px] font-medium text-zinc-700 truncate" x-text="f.name" :title="f.name"></div>
+                            <div class="text-[9px] text-zinc-400" x-text="(f.size / 1024).toFixed(0) + ' KB'"></div>
+                        </div>
+                        <button type="button" @click="quitarArchivo(idx)"
+                                class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-white/95 text-zinc-500 hover:text-red-600 shadow border border-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Quitar">
+                            <span class="text-sm leading-none">&times;</span>
+                        </button>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <div class="flex items-center justify-end gap-2">
@@ -710,6 +747,23 @@ function formEditar() {
         equipoId: '<?= e((string) $valores['equipo_id']) ?>',
         equipos: [],
         categorias: <?= json_encode($categorias, JSON_UNESCAPED_UNICODE) ?>,
+
+        // Adjuntos: galería visual con arrastrar/soltar
+        archivosSeleccionados: [],
+        dragActivo: false,
+        agregarArchivos(fileList) {
+            const dt = new DataTransfer();
+            this.archivosSeleccionados.forEach(f => dt.items.add(f));
+            Array.from(fileList).forEach(f => dt.items.add(f));
+            this.$refs.inputFiles.files = dt.files;
+            this.archivosSeleccionados = Array.from(dt.files);
+        },
+        quitarArchivo(idx) {
+            const dt = new DataTransfer();
+            this.archivosSeleccionados.forEach((f, i) => { if (i !== idx) dt.items.add(f); });
+            this.$refs.inputFiles.files = dt.files;
+            this.archivosSeleccionados = Array.from(dt.files);
+        },
 
         get subcategoriasFiltradas() {
             if (!this.categoriaId) return [];

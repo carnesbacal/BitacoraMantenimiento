@@ -1072,20 +1072,30 @@ require_once __DIR__ . '/config/header.php';
                 </p>
             </div>
 
-            <div class="mt-3 space-y-1.5" x-show="archivosSeleccionados.length > 0">
+            <div class="mt-3 mb-2 text-xs font-semibold text-bacal-700" x-show="archivosSeleccionados.length > 0">
+                <span x-text="archivosSeleccionados.length"></span> archivo(s) seleccionado(s)
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2" x-show="archivosSeleccionados.length > 0">
                 <template x-for="(f, idx) in archivosSeleccionados" :key="idx">
-                    <div class="flex items-center gap-2 px-3 py-2 bg-zinc-50 rounded-lg text-xs">
-                        <template x-if="f.type && f.type.startsWith('image/')">
-                            <img :src="f._url || (f._url = URL.createObjectURL(f))" class="w-9 h-9 rounded object-cover border border-zinc-200 shrink-0" alt="">
-                        </template>
-                        <template x-if="!(f.type && f.type.startsWith('image/'))">
-                            <span class="w-9 h-9 rounded bg-bacal-100 text-bacal-700 flex items-center justify-center text-[9px] font-extrabold uppercase shrink-0"
-                                  x-text="(f.name.split('.').pop() || '?').slice(0,4)"></span>
-                        </template>
-                        <span class="flex-1 truncate font-medium text-zinc-700" x-text="f.name"></span>
-                        <span class="text-zinc-500 shrink-0" x-text="(f.size / 1024).toFixed(0) + ' KB'"></span>
-                        <button type="button" @click="quitarArchivo(idx)" class="text-zinc-400 hover:text-red-600 shrink-0 p-1" title="Quitar">
-                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                    <div class="relative border border-zinc-200 rounded-lg overflow-hidden group bg-white">
+                        <div class="aspect-square bg-zinc-50 flex items-center justify-center">
+                            <template x-if="f.type && f.type.startsWith('image/')">
+                                <img :src="f._url || (f._url = URL.createObjectURL(f))" class="w-full h-full object-cover" alt="">
+                            </template>
+                            <template x-if="!(f.type && f.type.startsWith('image/'))">
+                                <div class="w-9 h-11 rounded-sm bg-white border border-zinc-200 shadow-sm flex items-end justify-center pb-1">
+                                    <span class="text-[9px] font-extrabold text-bacal-600 uppercase" x-text="(f.name.split('.').pop() || '?').slice(0,4)"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="px-1.5 py-1 border-t border-zinc-100">
+                            <div class="text-[10px] font-medium text-zinc-700 truncate" x-text="f.name" :title="f.name"></div>
+                            <div class="text-[9px] text-zinc-400" x-text="(f.size / 1024).toFixed(0) + ' KB'"></div>
+                        </div>
+                        <button type="button" @click="quitarArchivo(idx)"
+                                class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-white/95 text-zinc-500 hover:text-red-600 shadow border border-zinc-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Quitar">
+                            <span class="text-sm leading-none">&times;</span>
                         </button>
                     </div>
                 </template>

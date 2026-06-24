@@ -9,7 +9,7 @@
  */
 
 define('APP_NAME',    'SIGMA · Carnes Bacal');
-define('APP_VERSION', '2.0.9');
+define('APP_VERSION', '2.0.14');
 
 $_protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
