@@ -252,7 +252,7 @@ $historial = db_all(
 );
 
 $titulo_pagina = 'Flotilla · Mantenimiento';
-$mant_abiertos = flotilla_mant_abiertos($f_vehiculo_id ?: null);
+$mant_abiertos = flotilla_mant_abiertos(); // siempre todos los abiertos (panorama global)
 $pagina_activa = 'flotilla_mantenimiento';
 require_once __DIR__ . '/config/header.php';
 require_once __DIR__ . '/config/flotilla_nav.php';
