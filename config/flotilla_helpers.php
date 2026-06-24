@@ -584,3 +584,139 @@ function flotilla_guardar_recibo(array $file): array {
     }
     return ['ruta' => "uploads/$subcarpeta/$nombre", 'error' => null];
 }
+
+
+/* ===========================================================================
+ * Mantenimiento: flujo abierto/cerrado, vehículo en taller, gasto
+ * ======================================================================== */
+
+/** Pone (true) o quita (false) al vehículo de "En taller", sin tocar inactivo/baja. */
+function flotilla_vehiculo_taller(int $vid, bool $en_taller): void {
+    if ($en_taller) {
+        db_exec("UPDATE flotilla_vehiculos SET estado='taller' WHERE id=:id AND estado='activo'", ['id'=>$vid]);
+    } else {
+        db_exec("UPDATE flotilla_vehiculos SET estado='activo' WHERE id=:id AND estado='taller'", ['id'=>$vid]);
+    }
+}
+
+/** Proveedores activos (para autocompletado / datalist). */
+function flotilla_proveedores_lista(): array {
+    try {
+        return db_all("SELECT nombre FROM proveedores WHERE activo = 1 ORDER BY nombre");
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Crea o actualiza el gasto ligado a un mantenimiento (categoría "Mantenimiento").
+ * Usa flotilla_mant_historial.gasto_id para no duplicar. Devuelve el gasto_id.
+ */
+function flotilla_mant_gasto_sync(int $mant_id, int $vehiculo_id, ?float $costo, ?string $proveedor,
+                                  string $concepto, string $fecha, ?string $factura, ?int $km, ?int $usuario_id): ?int {
+    $tiene_gasto_id = (bool) db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'gasto_id'");
+    $gasto_id = null;
+    if ($tiene_gasto_id) {
+        $r = db_one("SELECT gasto_id FROM flotilla_mant_historial WHERE id=:id", ['id'=>$mant_id]);
+        $gasto_id = $r['gasto_id'] ?? null;
+    }
+    if (!$costo || $costo <= 0) return $gasto_id; // sin costo no se registra gasto
+    $cat = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre = 'Mantenimiento' LIMIT 1");
+    if (!$cat) return $gasto_id;
+
+    if ($gasto_id) {
+        db_exec("UPDATE flotilla_gastos SET fecha=:f, concepto=:c, monto=:m, proveedor=:p, numero_factura=:fac, km_odometro=:km WHERE id=:id",
+            ['f'=>$fecha, 'c'=>$concepto, 'm'=>$costo, 'p'=>$proveedor, 'fac'=>$factura, 'km'=>$km, 'id'=>$gasto_id]);
+    } else {
+        db_exec("INSERT INTO flotilla_gastos (vehiculo_id, categoria_id, fecha, concepto, monto, proveedor, numero_factura, km_odometro, creado_por)
+                 VALUES (:v,:cat,:f,:c,:m,:p,:fac,:km,:cp)",
+            ['v'=>$vehiculo_id, 'cat'=>$cat['id'], 'f'=>$fecha, 'c'=>$concepto, 'm'=>$costo, 'p'=>$proveedor, 'fac'=>$factura, 'km'=>$km, 'cp'=>$usuario_id]);
+        $gasto_id = (int) db_last_id();
+        if ($tiene_gasto_id) {
+            db_exec("UPDATE flotilla_mant_historial SET gasto_id=:g WHERE id=:id", ['g'=>$gasto_id, 'id'=>$mant_id]);
+        }
+    }
+    return $gasto_id;
+}
+
+/** Mantenimientos abiertos (sin fecha_fin) con días en taller. Vacío si aún no existe la columna. */
+function flotilla_mant_abiertos(?int $vehiculo_id = null): array {
+    try {
+        if (!db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'fecha_fin'")) return [];
+        $where = 'h.fecha_fin IS NULL';
+        $params = [];
+        if ($vehiculo_id) { $where .= ' AND h.vehiculo_id = :v'; $params['v'] = $vehiculo_id; }
+        return db_all(
+            "SELECT h.*, v.alias, v.placas, v.marca, v.modelo,
+                    GREATEST(0, DATEDIFF(CURDATE(), h.fecha)) AS dias_taller
+             FROM flotilla_mant_historial h
+             INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+             WHERE $where
+             ORDER BY h.fecha ASC",
+            $params
+        );
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+
+/* ===========================================================================
+ * Fotos del vehículo (historial / evolución)
+ * ======================================================================== */
+
+/** Guarda una foto (solo imágenes). Devuelve ['ruta'=>?string, 'error'=>?string]. */
+function flotilla_guardar_foto(array $file): array {
+    $err = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($err === UPLOAD_ERR_NO_FILE || empty($file['name'])) return ['ruta' => null, 'error' => null];
+    if ($err !== UPLOAD_ERR_OK) return ['ruta' => null, 'error' => 'No se pudo subir la foto.'];
+    if ((int) ($file['size'] ?? 0) > 15 * 1024 * 1024) return ['ruta' => null, 'error' => 'La foto excede el tamaño máximo (15 MB).'];
+    $info = @getimagesize($file['tmp_name']);
+    if ($info === false || empty($info['mime'])
+        || !in_array($info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        return ['ruta' => null, 'error' => 'El archivo debe ser una imagen (JPG, PNG, WEBP o GIF).'];
+    }
+    $sub = date('Y/m');
+    $dir = __DIR__ . '/../assets/uploads/' . $sub;
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    $ext = preg_replace('/[^a-z0-9]/i', '', strtolower(pathinfo($file['name'], PATHINFO_EXTENSION))) ?: 'jpg';
+    $nombre = 'foto_' . bin2hex(random_bytes(12)) . ".$ext";
+    if (!move_uploaded_file($file['tmp_name'], "$dir/$nombre")) {
+        return ['ruta' => null, 'error' => 'No se pudo guardar la foto en el servidor.'];
+    }
+    return ['ruta' => "uploads/$sub/$nombre", 'error' => null];
+}
+
+/** Historial de fotos de un vehículo (más reciente primero). */
+function flotilla_vehiculo_fotos(int $vid): array {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_vehiculo_fotos'")) return [];
+        return db_all(
+            "SELECT f.*, u.nombre_completo AS usuario_nombre
+             FROM flotilla_vehiculo_fotos f
+             LEFT JOIN usuarios u ON f.usuario_id = u.id
+             WHERE f.vehiculo_id = :v
+             ORDER BY f.tomada_en DESC, f.id DESC",
+            ['v' => $vid]
+        );
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/** Días desde la última foto (null si no hay). */
+function flotilla_vehiculo_foto_dias(int $vid): ?int {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_vehiculo_fotos'")) return null;
+        $r = db_one("SELECT MAX(tomada_en) f FROM flotilla_vehiculo_fotos WHERE vehiculo_id = :v", ['v' => $vid]);
+        if (empty($r['f'])) return null;
+        return (int) floor((time() - strtotime($r['f'])) / 86400);
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+/** Umbral (días) para considerar la foto desactualizada. Default 90 (trimestral). */
+function flotilla_foto_umbral(): int {
+    return max(1, (int) config_get('foto_umbral_dias', 90));
+}

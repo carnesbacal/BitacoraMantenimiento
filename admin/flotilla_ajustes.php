@@ -23,13 +23,20 @@ if (es_post()) {
         if ($umbral < 1)   $umbral = 1;
         if ($umbral > 365) $umbral = 365;
         config_set('odometro_umbral_dias', (string) $umbral);
-        flash_set('exito', "Umbral de odómetro guardado: {$umbral} días.");
+
+        $umbral_foto = (int) input('foto_umbral_dias', 90);
+        if ($umbral_foto < 1)   $umbral_foto = 1;
+        if ($umbral_foto > 365) $umbral_foto = 365;
+        config_set('foto_umbral_dias', (string) $umbral_foto);
+
+        flash_set('exito', 'Ajustes de flotilla guardados.');
         header('Location: ' . url('admin/flotilla_ajustes.php'));
         exit;
     }
 }
 
 $umbral_actual = flotilla_odometro_umbral();
+$foto_umbral_actual = flotilla_foto_umbral();
 $config_lista  = (bool) db_one("SHOW TABLES LIKE 'configuracion'");
 
 $titulo_pagina = 'Ajustes de flotilla';
@@ -64,6 +71,17 @@ require_once __DIR__ . '/../config/header.php';
                 se marca como desactualizado en el Dashboard, la lista de Flotilla y la ficha del vehículo.
             </p>
             <input type="number" name="odometro_umbral_dias" min="1" max="365" value="<?= (int) $umbral_actual ?>" required
+                   class="w-40 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+        </div>
+        <div>
+            <label class="text-sm font-semibold text-zinc-700 mb-1 flex items-center gap-2">
+                <i data-lucide="camera" class="w-4 h-4 text-bacal-700"></i>
+                Umbral de foto del vehículo desactualizada (días)
+            </label>
+            <p class="text-xs text-zinc-500 mb-2">
+                Si un vehículo lleva más de estos días sin una foto nueva, en su ficha se sugiere actualizarla. Recomendado: 90 días (trimestral).
+            </p>
+            <input type="number" name="foto_umbral_dias" min="1" max="365" value="<?= (int) $foto_umbral_actual ?>" required
                    class="w-40 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
         </div>
         <div class="flex justify-end">
