@@ -228,7 +228,7 @@ require_once __DIR__ . '/config/header.php';
 
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 mt-3">
                     <a href="<?= url('equipo_ver.php?id=' . $m['equipo_id']) ?>" class="flex items-center gap-1 hover:text-bacal-700">
-                        <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
+                        <i data-lucide="box" class="w-3.5 h-3.5"></i>
                         <span class="font-mono font-bold"><?= e($m['equipo_codigo']) ?></span>
                         <span class="text-zinc-500"><?= e($m['equipo_nombre']) ?></span>
                     </a>

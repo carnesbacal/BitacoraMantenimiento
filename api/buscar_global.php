@@ -358,10 +358,10 @@ if (!empty($resultados['equipos'])) {
             'badge' => $r['estado_vida'],
             'badge_color' => $color_estado,
             'url' => url_relativa('equipo_ver.php?id=' . $r['id']),
-            'icono' => 'monitor',
+            'icono' => 'box',
         ];
     }
-    $grupos[] = ['nombre' => 'Equipos', 'icono' => 'monitor', 'items' => $items];
+    $grupos[] = ['nombre' => 'Equipos', 'icono' => 'box', 'items' => $items];
 }
 
 if (!empty($resultados['usuarios'])) {

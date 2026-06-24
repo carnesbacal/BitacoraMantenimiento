@@ -199,7 +199,7 @@ require_once __DIR__ . '/config/header.php';
                      class="w-full h-full object-cover">
                 <?php else: ?>
                 <div class="w-full h-full flex items-center justify-center">
-                    <i data-lucide="monitor" class="w-16 h-16 text-zinc-300"></i>
+                    <i data-lucide="box" class="w-16 h-16 text-zinc-300"></i>
                 </div>
                 <?php endif; ?>
             </div>

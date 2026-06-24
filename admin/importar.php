@@ -337,7 +337,7 @@ require_once __DIR__ . '/../config/header.php';
                      :class="tipo === 'equipos' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
                     <div class="flex items-center gap-3 mb-2">
                         <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                            <i data-lucide="monitor" class="w-5 h-5 text-purple-700"></i>
+                            <i data-lucide="box" class="w-5 h-5 text-purple-700"></i>
                         </div>
                         <div>
                             <div class="font-display font-bold text-zinc-900">Equipos</div>

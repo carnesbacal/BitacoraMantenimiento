@@ -620,7 +620,14 @@ function flotilla_mant_gasto_sync(int $mant_id, int $vehiculo_id, ?float $costo,
         $r = db_one("SELECT gasto_id FROM flotilla_mant_historial WHERE id=:id", ['id'=>$mant_id]);
         $gasto_id = $r['gasto_id'] ?? null;
     }
-    if (!$costo || $costo <= 0) return $gasto_id; // sin costo no se registra gasto
+    if (!$costo || $costo <= 0) {
+        // Si quitaron el costo y había un gasto ligado, se elimina.
+        if ($gasto_id) {
+            db_exec("DELETE FROM flotilla_gastos WHERE id = :id", ['id' => $gasto_id]);
+            if ($tiene_gasto_id) db_exec("UPDATE flotilla_mant_historial SET gasto_id = NULL WHERE id = :id", ['id' => $mant_id]);
+        }
+        return null;
+    }
     $cat = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre = 'Mantenimiento' LIMIT 1");
     if (!$cat) return $gasto_id;
 

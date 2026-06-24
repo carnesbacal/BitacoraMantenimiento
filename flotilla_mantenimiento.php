@@ -122,6 +122,51 @@ if (es_post() && $puede_gestionar) {
             }
         }
 
+        if ($op === 'mant_editar') {
+            $mid_e  = (int) input('mant_id', 0);
+            $mant_e = db_one("SELECT * FROM flotilla_mant_historial WHERE id = :id", ['id' => $mid_e]);
+            if (!$mant_e) {
+                $errores[] = 'Mantenimiento no encontrado.';
+            } elseif (array_key_exists('fecha_fin', $mant_e) && $mant_e['fecha_fin'] !== null) {
+                $errores[] = 'Solo se pueden editar mantenimientos abiertos (sin fecha de fin).';
+            } else {
+                $nombre_e = trim((string) input('nombre', ''));
+                $fecha_e  = trim((string) input('fecha', '')) ?: $mant_e['fecha'];
+                $km_e     = (int) input('km_odometro', 0) ?: null;
+                $taller_e = trim((string) input('taller', '')) ?: null;
+                $tec_e    = trim((string) input('tecnico', '')) ?: null;
+                $costo_e  = (float) input('costo', 0) ?: null;
+                $orden_e  = trim((string) input('numero_orden', '')) ?: null;
+                $desc_e   = trim((string) input('descripcion', '')) ?: null;
+                $notas_e  = trim((string) input('notas', '')) ?: null;
+                $prov_id_e = null;
+                if ($taller_e) { $pre = db_one("SELECT id FROM proveedores WHERE nombre = :n LIMIT 1", ['n'=>$taller_e]); $prov_id_e = $pre['id'] ?? null; }
+                if ($nombre_e === '') $errores[] = 'El nombre del mantenimiento es obligatorio.';
+                $fac_e = $mant_e['archivo_url'];
+                $re = flotilla_guardar_recibo($_FILES['factura'] ?? []);
+                if ($re['error']) $errores[] = $re['error']; elseif ($re['ruta']) $fac_e = $re['ruta'];
+                if (empty($errores)) {
+                    $cx_e = ''; $px_e = [];
+                    if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'proveedor_id'")) { $cx_e = ', proveedor_id = :prov_id'; $px_e['prov_id'] = $prov_id_e; }
+                    db_exec("UPDATE flotilla_mant_historial SET
+                                nombre=:nombre, descripcion=:desc, fecha=:fecha, km_odometro=:km,
+                                taller=:taller, tecnico=:tec, costo=:costo, numero_orden=:orden,
+                                archivo_url=:au, notas=:notas{$cx_e}
+                             WHERE id=:id",
+                        array_merge([
+                            'nombre'=>$nombre_e, 'desc'=>$desc_e, 'fecha'=>$fecha_e, 'km'=>$km_e,
+                            'taller'=>$taller_e, 'tec'=>$tec_e, 'costo'=>$costo_e, 'orden'=>$orden_e,
+                            'au'=>$fac_e, 'notas'=>$notas_e, 'id'=>$mid_e,
+                        ], $px_e));
+                    flotilla_mant_gasto_sync($mid_e, (int) $mant_e['vehiculo_id'], $costo_e, $taller_e,
+                        $nombre_e . ($taller_e ? " – {$taller_e}" : ''), $fecha_e, $orden_e, $km_e, $u['id']);
+                    flash_set('exito', 'Mantenimiento actualizado.');
+                    header('Location: ' . url('flotilla_mantenimiento.php?vehiculo_id=' . (int) $mant_e['vehiculo_id']));
+                    exit;
+                }
+            }
+        }
+
         if ($op === 'cerrar') {
             $mid         = (int) input('mant_id', 0);
             $fecha_fin_c = trim((string) input('fecha_fin', '')) ?: date('Y-m-d');
@@ -382,6 +427,8 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                     <?= (int) $ma['dias_taller'] ?> día<?= (int) $ma['dias_taller'] === 1 ? '' : 's' ?> en taller
                 </span>
                 <?php if ($puede_gestionar): ?>
+                <button type="button" onclick="abrirEditarMant(<?= (int) $ma['id'] ?>)"
+                        class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-700 text-xs font-semibold hover:bg-zinc-50">Editar</button>
                 <button type="button"
                         onclick='abrirCerrarMant(<?= (int) $ma['id'] ?>, <?= json_encode($ma['fecha']) ?>, <?= json_encode((string) ($ma['costo'] ?? '')) ?>, <?= json_encode($ma['nombre']) ?>)'
                         class="px-3 py-1.5 rounded-lg bg-bacal-700 text-white text-xs font-semibold hover:bg-bacal-800">Cerrar</button>
@@ -795,6 +842,106 @@ function abrirCerrarMant(id, fechaInicio, costo, nombre) {
     if (fechaInicio && ff.value < fechaInicio) ff.value = fechaInicio;
     document.getElementById('cerrar_costo').value = costo || '';
     document.getElementById('modal-cerrar-mant').classList.remove('hidden');
+}
+</script>
+<?php endif; ?>
+
+<?php if ($puede_gestionar): ?>
+<div id="modal-editar-mant" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50" onclick="document.getElementById('modal-editar-mant').classList.add('hidden')"></div>
+    <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
+                <i data-lucide="pencil" class="w-4 h-4 text-bacal-700"></i> Editar mantenimiento (abierto)
+            </h3>
+            <button type="button" onclick="document.getElementById('modal-editar-mant').classList.add('hidden')" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <form method="POST" enctype="multipart/form-data" id="form-mant-editar" class="p-6 space-y-4">
+            <?= csrf_input() ?>
+            <input type="hidden" name="op" value="mant_editar">
+            <input type="hidden" name="mant_id">
+            <div>
+                <label class="block text-xs font-bold text-zinc-700 mb-1">Nombre del servicio <span class="text-red-500">*</span></label>
+                <input type="text" name="nombre" required maxlength="100" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Fecha de inicio</label>
+                    <input type="date" name="fecha" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Km odómetro <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="number" name="km_odometro" min="0" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Taller / Proveedor</label>
+                    <input type="text" name="taller" maxlength="100" list="lista-proveedores" autocomplete="off" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Técnico</label>
+                    <input type="text" name="tecnico" maxlength="100" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Costo</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                        <input type="number" name="costo" min="0" step="0.01" class="w-full pl-6 pr-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">No. orden</label>
+                    <input type="text" name="numero_orden" maxlength="60" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-700 mb-1">Descripción</label>
+                <textarea name="descripcion" rows="2" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-700 mb-1">Notas</label>
+                <textarea name="notas" rows="2" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-zinc-700 mb-1">Factura / recibo <span class="text-zinc-400 font-normal normal-case">(opcional, reemplaza la actual)</span></label>
+                <input type="file" name="factura" accept="image/*,application/pdf" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+            </div>
+            <div class="flex justify-end gap-3 pt-2 border-t border-zinc-100">
+                <button type="button" onclick="document.getElementById('modal-editar-mant').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-zinc-300 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">Cancelar</button>
+                <button type="submit" class="px-5 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+window.mantsAb = {
+<?php foreach ($mant_abiertos as $ma): ?>
+    <?= (int) $ma['id'] ?>: <?= json_encode([
+        'nombre' => $ma['nombre'],
+        'fecha'  => $ma['fecha'],
+        'km'     => $ma['km_odometro'],
+        'taller' => (string) ($ma['taller'] ?? ''),
+        'tecnico'=> (string) ($ma['tecnico'] ?? ''),
+        'costo'  => ($ma['costo'] !== null ? (string) $ma['costo'] : ''),
+        'orden'  => (string) ($ma['numero_orden'] ?? ''),
+        'desc'   => (string) ($ma['descripcion'] ?? ''),
+        'notas'  => (string) ($ma['notas'] ?? ''),
+    ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+<?php endforeach; ?>
+};
+function abrirEditarMant(id){
+    var d = window.mantsAb[id]; if(!d) return;
+    var f = document.getElementById('form-mant-editar');
+    f.mant_id.value = id;
+    f.nombre.value = d.nombre || '';
+    f.fecha.value = d.fecha || '';
+    f.km_odometro.value = d.km || '';
+    f.taller.value = d.taller || '';
+    f.tecnico.value = d.tecnico || '';
+    f.costo.value = d.costo || '';
+    f.numero_orden.value = d.orden || '';
+    f.descripcion.value = d.desc || '';
+    f.notas.value = d.notas || '';
+    document.getElementById('modal-editar-mant').classList.remove('hidden');
 }
 </script>
 <?php endif; ?>

@@ -768,7 +768,7 @@ $hay_filtros = !empty($f_busqueda) || $f_sucursal || $f_area || $f_categoria
                                         </div>
                                         <?php if ($i['equipo_nombre']): ?>
                                         <div class="text-[10px] text-zinc-400 truncate">
-                                            <i data-lucide="monitor" class="w-2.5 h-2.5 inline mr-0.5"></i>
+                                            <i data-lucide="box" class="w-2.5 h-2.5 inline mr-0.5"></i>
                                             <?= e($i['equipo_nombre']) ?>
                                             <span class="font-mono"><?= e($i['equipo_codigo']) ?></span>
                                         </div>

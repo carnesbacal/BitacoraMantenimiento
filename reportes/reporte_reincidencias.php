@@ -217,7 +217,7 @@ require_once __DIR__ . '/../config/header.php';
     <!-- Equipos recurrentes -->
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
         <h3 class="font-display text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
-            <i data-lucide="monitor" class="w-4 h-4 text-bacal-700"></i> Equipos con más incidencias
+            <i data-lucide="box" class="w-4 h-4 text-bacal-700"></i> Equipos con más incidencias
         </h3>
         <p class="text-xs text-zinc-500 mb-4">Equipos con 2 o más incidencias en el período. Candidatos a mantenimiento preventivo o reemplazo.</p>
         <?php if (empty($equipos_recurrentes)): ?>

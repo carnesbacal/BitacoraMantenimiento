@@ -932,7 +932,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="text-xs font-bold text-zinc-600 uppercase tracking-wide mb-3">Equipo</h3>
                 <div class="flex items-start gap-2.5">
                     <div class="w-9 h-9 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0">
-                        <i data-lucide="monitor" class="w-5 h-5 text-zinc-600"></i>
+                        <i data-lucide="box" class="w-5 h-5 text-zinc-600"></i>
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="font-semibold text-sm text-zinc-900 truncate"><?= e($incidencia['equipo_nombre']) ?></div>

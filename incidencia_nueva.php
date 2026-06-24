@@ -722,7 +722,7 @@ require_once __DIR__ . '/config/header.php';
         <!-- Sección 3: Equipo y reportante -->
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
             <h3 class="font-display text-base font-bold text-zinc-900 mb-4 flex items-center gap-2">
-                <i data-lucide="monitor" class="w-4 h-4 text-bacal-700"></i> Equipo y personas involucradas
+                <i data-lucide="box" class="w-4 h-4 text-bacal-700"></i> Equipo y personas involucradas
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 

@@ -299,7 +299,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Nombre comercial *</label>
                     <input type="text" name="nombre" required maxlength="150"
                            value="<?= e($es_edicion ? $p['nombre'] : (string) input('nombre', '')) ?>"
-                           placeholder="ej. Abasteo, enetSystem, Sipcons"
+                           placeholder="ej. Taller Mecánico Bacal, Refacciones del Norte, Frío Industrial"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                 </div>
 
@@ -322,7 +322,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Servicio que ofrece</label>
                     <input type="text" name="servicio" maxlength="255"
                            value="<?= e($es_edicion ? (string) $p['servicio'] : (string) input('servicio', '')) ?>"
-                           placeholder="ej. Soporte técnico, Proveedor de tecnología, Líneas troncales"
+                           placeholder="ej. Mecánica general, Refrigeración, Eléctrico, Llantas, Refacciones"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                 </div>
             </div>
@@ -351,7 +351,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Sitio web</label>
                     <input type="text" name="sitio_web" maxlength="200"
                            value="<?= e($es_edicion ? (string) $p['sitio_web'] : (string) input('sitio_web', '')) ?>"
-                           placeholder="ej. https://abasteo.mx"
+                           placeholder="ej. https://proveedor.com.mx"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                 </div>
                 <div>
@@ -412,7 +412,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                                    placeholder="Email"
                                    class="px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                             <input type="text" :name="'contacto_notas[]'" x-model="c.notas"
-                                   placeholder="Notas (ej. Solo turno matutino, Línea básculas, etc.)"
+                                   placeholder="Notas (ej. Solo turno matutino, atiende urgencias, etc.)"
                                    class="md:col-span-2 px-3 py-1.5 rounded-md border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                         </div>
                     </div>
@@ -434,7 +434,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Marcas</label>
                     <input type="text" name="marcas" maxlength="500"
                            value="<?= e($marcas_edit) ?>"
-                           placeholder="ej. HP, Dell, Lenovo, Epson"
+                           placeholder="ej. Carrier, Hussmann, Torrey, Bosch"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                     <p class="text-[10px] text-zinc-500 mt-1">Separa con comas.</p>
                 </div>
@@ -442,7 +442,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $proveedor_edit)):
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Tipos de equipo</label>
                     <input type="text" name="tipos_equipo" maxlength="500"
                            value="<?= e($tipos_edit) ?>"
-                           placeholder="ej. PC, Impresora, Báscula, POS"
+                           placeholder="ej. Cámara fría, Báscula, Sierra, Compresor, Montacargas"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
                     <p class="text-[10px] text-zinc-500 mt-1">Separa con comas.</p>
                 </div>
