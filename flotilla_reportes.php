@@ -154,6 +154,9 @@ $mantenimientos = db_all(
     ['desde' => $desde, 'hasta' => $hasta]
 );
 
+// 7b. Proveedores de flotilla más caros (gasto de mantenimiento por proveedor)
+$prov_flota = flotilla_gasto_proveedores($desde, $hasta, $suc_filter_gastos, 15);
+
 // 8. Tendencia mensual (mes a mes entre desde y hasta)
 $tendencia = db_all(
     "SELECT DATE_FORMAT(g.fecha,'%Y-%m') periodo,
@@ -558,6 +561,47 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <?php endif; ?>
 
     </div>
+
+    <!-- Proveedores de flotilla más caros -->
+    <?php if (!empty($prov_flota)): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
+            <i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Proveedores de flotilla más caros</h3>
+            <span class="text-xs text-zinc-500">(<?= count($prov_flota) ?>)</span>
+            <span class="ml-auto text-[11px] text-zinc-400">Mantenimiento de vehículos en el período</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-zinc-50 border-b border-zinc-200">
+                    <tr>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proveedor / Taller</th>
+                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Servicios</th>
+                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Vehículos</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Promedio</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    <?php foreach ($prov_flota as $idx => $pf):
+                        $reg = (int) $pf['registros'];
+                        $prom = $reg > 0 ? (float) $pf['total'] / $reg : 0;
+                    ?>
+                    <tr class="hover:bg-zinc-50">
+                        <td class="px-4 py-2.5 text-zinc-400 font-mono text-xs"><?= $idx + 1 ?></td>
+                        <td class="px-4 py-2.5 font-semibold text-sm text-zinc-900"><?= e($pf['proveedor']) ?></td>
+                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= $reg ?></td>
+                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= (int) $pf['vehiculos'] ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600">$<?= number_format($prom, 2) ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700">$<?= number_format((float) $pf['total'], 2) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
 
 </div>
 

@@ -168,6 +168,7 @@ if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
     ) as $r) { $odo_vencidos_ids[(int) $r['id']] = true; }
 }
 $stats       = flotilla_stats($f_sucursal ?: null);
+$mant_gasto_anio = flotilla_mant_gasto_total(date('Y-01-01'), date('Y-m-d'), $f_sucursal ?: null);
 $tipos       = db_all("SELECT * FROM flotilla_tipos_vehiculo WHERE activo=1 ORDER BY nombre");
 $sucursales  = tiene_permiso('ver_todas_sucursales')
     ? db_all("SELECT id, nombre FROM sucursales WHERE activo=1 ORDER BY nombre")
@@ -292,6 +293,15 @@ require_once __DIR__ . '/config/flotilla_nav.php';
         </div>
         <?php endforeach; ?>
     </div>
+
+    <!-- Nota: gasto en mantenimiento de flotilla -->
+    <?php if (($mant_gasto_anio ?? 0) > 0): ?>
+    <a href="<?= url('flotilla_reportes.php') ?>" class="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-800 hover:bg-blue-100 transition-colors w-fit">
+        <i data-lucide="wrench" class="w-4 h-4 text-blue-500"></i>
+        <span>Gasto en mantenimiento de flotilla este año: <strong class="font-bold">$<?= number_format($mant_gasto_anio, 2) ?></strong></span>
+        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-blue-400"></i>
+    </a>
+    <?php endif; ?>
 
     <!-- Filtros -->
     <form method="GET" class="bg-white rounded-xl border border-zinc-200 p-3 flex flex-wrap gap-2 items-end">

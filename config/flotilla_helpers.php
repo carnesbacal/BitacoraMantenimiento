@@ -480,6 +480,57 @@ function flotilla_gasto_total(int $vehiculo_id, ?string $desde = null, ?string $
     return (float) ($row['total'] ?? 0);
 }
 
+/**
+ * Gasto de mantenimiento de flotilla agrupado por proveedor (texto).
+ * Solo categorías de Mantenimiento / Refacciones; ignora combustible, multas, etc.
+ * $suc_where: filtro extra ya armado, ej. " AND v.sucursal_id = 3" (usa alias v).
+ * Devuelve: proveedor, total, registros, vehiculos.
+ */
+function flotilla_gasto_proveedores(?string $desde = null, ?string $hasta = null, string $suc_where = '', int $limite = 50): array {
+    $params = [];
+    $w = "g.proveedor IS NOT NULL AND TRIM(g.proveedor) <> '' "
+       . "AND (cat.nombre LIKE '%Mantenimiento%' OR cat.nombre LIKE '%Refacc%')";
+    if ($desde) { $w .= ' AND g.fecha >= :desde'; $params['desde'] = $desde; }
+    if ($hasta) { $w .= ' AND g.fecha <= :hasta'; $params['hasta'] = $hasta; }
+    $limite = max(1, $limite);
+    return db_all(
+        "SELECT g.proveedor,
+                COALESCE(SUM(g.monto), 0)       total,
+                COUNT(*)                        registros,
+                COUNT(DISTINCT g.vehiculo_id)   vehiculos
+         FROM flotilla_gastos g
+         INNER JOIN flotilla_categorias_gasto cat ON g.categoria_id = cat.id
+         INNER JOIN flotilla_vehiculos v          ON g.vehiculo_id  = v.id
+         WHERE $w $suc_where
+         GROUP BY g.proveedor
+         ORDER BY total DESC
+         LIMIT $limite",
+        $params
+    );
+}
+
+/**
+ * Total gastado en mantenimiento/refacciones de flotilla en un período.
+ * Para una nota indicativa rápida.
+ */
+function flotilla_mant_gasto_total(?string $desde = null, ?string $hasta = null, ?int $sucursal_id = null): float {
+    $params = [];
+    $w = "(cat.nombre LIKE '%Mantenimiento%' OR cat.nombre LIKE '%Refacc%')";
+    if ($desde) { $w .= ' AND g.fecha >= :desde'; $params['desde'] = $desde; }
+    if ($hasta) { $w .= ' AND g.fecha <= :hasta'; $params['hasta'] = $hasta; }
+    $suc = '';
+    if ($sucursal_id) { $suc = ' AND v.sucursal_id = :sid'; $params['sid'] = $sucursal_id; }
+    $row = db_one(
+        "SELECT COALESCE(SUM(g.monto), 0) total
+         FROM flotilla_gastos g
+         INNER JOIN flotilla_categorias_gasto cat ON g.categoria_id = cat.id
+         INNER JOIN flotilla_vehiculos v          ON g.vehiculo_id  = v.id
+         WHERE $w $suc",
+        $params
+    );
+    return (float) ($row['total'] ?? 0);
+}
+
 // ----------------------------------------------------------------------------
 // HELPERS DE FORMATO
 // ----------------------------------------------------------------------------

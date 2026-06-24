@@ -18,6 +18,7 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/../config/flotilla_helpers.php';
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
@@ -35,6 +36,24 @@ $resumen     = costos_resumen_periodo($periodo['desde'], $periodo['hasta'], $whe
 $ranking_inc = costos_ranking_incidencias($periodo['desde'], $periodo['hasta'], 20, $where_sucursal, $params_sucursal);
 $ranking_prov= costos_ranking_proveedores($periodo['desde'], $periodo['hasta'], 20, $where_sucursal, $params_sucursal);
 $tendencia   = costos_tendencia($periodo['desde'], $periodo['hasta'], $agrupar, $where_sucursal, $params_sucursal);
+
+// Gasto de flotilla (mantenimiento de vehículos) por proveedor, para columna adicional.
+$flota_prov = function_exists('flotilla_gasto_proveedores')
+    ? flotilla_gasto_proveedores($periodo['desde'], $periodo['hasta'], '', 200)
+    : [];
+$flota_map = [];
+foreach ($flota_prov as $fp) {
+    $flota_map[mb_strtolower(trim((string) $fp['proveedor']))] = (float) $fp['total'];
+}
+$flota_total_rank = 0.0;
+foreach ($ranking_prov as &$p_ref) {
+    $key = mb_strtolower(trim((string) $p_ref['nombre']));
+    $p_ref['flotilla']   = $flota_map[$key] ?? 0.0;
+    $p_ref['total_full'] = (float) $p_ref['total'] + $p_ref['flotilla'];
+    $flota_total_rank   += $p_ref['flotilla'];
+}
+unset($p_ref);
+usort($ranking_prov, fn($a, $b) => $b['total_full'] <=> $a['total_full']);
 $por_sucursal= $sucursal_filtro ? [] : costos_por_sucursal($periodo['desde'], $periodo['hasta']);
 
 // ----------------------------------------------------------------------------
@@ -73,13 +92,14 @@ if ($es_exportacion) {
     csv_fila(['']);
 
     csv_fila(['PROVEEDORES MÁS CAROS']);
-    csv_fila(['Proveedor', 'Servicio', 'Incidencias', 'Mano obra', 'Materiales', 'Total']);
+    csv_fila(['Proveedor', 'Servicio', 'Incidencias', 'Mano obra', 'Materiales', 'Flotilla (mant.)', 'Total']);
     foreach ($ranking_prov as $p) {
         csv_fila([
             $p['nombre'], $p['servicio'] ?? '', $p['num_incidencias'],
             number_format((float) $p['mano_obra'], 2),
             number_format((float) $p['materiales'], 2),
-            number_format((float) $p['total'], 2),
+            number_format((float) ($p['flotilla'] ?? 0), 2),
+            number_format((float) ($p['total_full'] ?? $p['total']), 2),
         ]);
     }
 
@@ -302,6 +322,9 @@ require_once __DIR__ . '/../config/header.php';
             <i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Proveedores más caros</h3>
             <span class="text-xs text-zinc-500">(<?= count($ranking_prov) ?>)</span>
+            <?php if (($flota_total_rank ?? 0) > 0): ?>
+            <span class="ml-auto text-[11px] text-blue-600 flex items-center gap-1"><i data-lucide="truck" class="w-3.5 h-3.5"></i> Incluye <?= e(fmt_dinero((float) $flota_total_rank)) ?> de mantenimiento de flotilla</span>
+            <?php endif; ?>
         </div>
         <?php if (empty($ranking_prov)): ?>
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin gastos a proveedores registrados en el período.</div>
@@ -315,6 +338,7 @@ require_once __DIR__ . '/../config/header.php';
                         <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Incid.</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mano obra</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Materiales</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-blue-500 uppercase tracking-wider" title="Mantenimiento de vehículos de flotilla facturado por este proveedor">Flotilla</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total</th>
                     </tr>
                 </thead>
@@ -328,8 +352,8 @@ require_once __DIR__ . '/../config/header.php';
                         </td>
                         <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= (int) $p['num_incidencias'] ?></td>
                         <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= e(fmt_dinero((float) $p['mano_obra'])) ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= e(fmt_dinero((float) $p['materiales'])) ?></td>
-                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700"><?= e(fmt_dinero((float) $p['total'])) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= ((float) ($p['flotilla'] ?? 0)) > 0 ? '<span class="text-blue-600 font-medium">' . e(fmt_dinero((float) $p['flotilla'])) . '</span>' : '<span class="text-zinc-300">—</span>' ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700"><?= e(fmt_dinero((float) ($p['total_full'] ?? $p['total']))) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
