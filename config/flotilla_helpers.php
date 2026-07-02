@@ -317,6 +317,25 @@ function flotilla_odometro_registrar(int $vid, int $km, string $origen, ?int $km
     } catch (Throwable $e) {}
 }
 
+/** Historial de lecturas del odómetro de un vehículo (más reciente primero). */
+function flotilla_odometro_lista(int $vid, int $limite = 100): array {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) return [];
+        $limite = max(1, $limite);
+        return db_all(
+            "SELECT h.*, u.nombre_completo AS usuario_nombre
+             FROM flotilla_odometro_historial h
+             LEFT JOIN usuarios u ON h.usuario_id = u.id
+             WHERE h.vehiculo_id = :v
+             ORDER BY h.leido_en DESC, h.id DESC
+             LIMIT $limite",
+            ['v' => $vid]
+        );
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 /** Mensaje amigable tras actualizar el odómetro, con el recorrido desde la última lectura. */
 function flotilla_odometro_mensaje(array $res, int $km_nuevo): string {
     $msg = 'Odómetro actualizado a ' . number_format($km_nuevo) . ' km.';

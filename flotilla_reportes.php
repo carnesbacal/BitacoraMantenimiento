@@ -80,6 +80,26 @@ $kpi_comb = db_one(
     ['desde' => $desde, 'hasta' => $hasta]
 ) ?? [];
 
+// 2b. Km recorridos en el período según el ODÓMETRO (MAX - MIN por vehículo).
+// Se usa como respaldo porque las cargas importadas (Xiga) no traen km por carga.
+$km_odometro_periodo = 0;
+try {
+    if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+        $km_odo = db_one(
+            "SELECT COALESCE(SUM(t.km_periodo), 0) km
+             FROM (
+                SELECT h.vehiculo_id, MAX(h.km) - MIN(h.km) km_periodo
+                FROM flotilla_odometro_historial h
+                INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+                WHERE DATE(h.leido_en) BETWEEN :desde AND :hasta $suc_filter_gastos
+                GROUP BY h.vehiculo_id
+             ) t",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
+        $km_odometro_periodo = (int) ($km_odo['km'] ?? 0);
+    }
+} catch (Throwable $e) { $km_odometro_periodo = 0; }
+
 // 3. KPIs mantenimiento
 $kpi_mant = db_one(
     "SELECT
@@ -124,22 +144,36 @@ $por_vehiculo = db_all(
     ['desde' => $desde, 'hasta' => $hasta]
 );
 
-// 6. Rendimiento combustible por vehículo
+// 6. Rendimiento combustible por vehículo.
+// Los km recorridos se toman del ODÓMETRO (MAX-MIN en el período) porque las cargas
+// importadas no traen km por carga. Rendimiento estimado = km del odómetro / litros del período.
+$tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+$join_odo  = $tiene_odo
+    ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
+                  FROM flotilla_odometro_historial
+                  WHERE DATE(leido_en) BETWEEN :desde2 AND :hasta2
+                  GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
+    : "";
+$km_expr   = $tiene_odo ? "COALESCE(o.km_periodo, 0)" : "COALESCE(SUM(c.km_recorridos), 0)";
+$params_r  = ['desde' => $desde, 'hasta' => $hasta];
+if ($tiene_odo) { $params_r['desde2'] = $desde; $params_r['hasta2'] = $hasta; }
 $rendimiento = db_all(
     "SELECT v.id, v.placas, v.alias, v.marca, v.modelo,
             COUNT(c.id) cargas,
-            ROUND(AVG(NULLIF(c.rendimiento_kml,0)),2) rend_prom,
             ROUND(SUM(c.litros),1) total_litros,
             COALESCE(SUM(c.litros * c.precio_litro),0) costo_comb,
-            COALESCE(SUM(c.km_recorridos),0) km_recorridos
+            $km_expr km_recorridos,
+            CASE WHEN $km_expr > 0 AND SUM(c.litros) > 0
+                 THEN ROUND($km_expr / SUM(c.litros), 2) ELSE 0 END rend_prom
      FROM flotilla_vehiculos v
      INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id
-     WHERE DATE(c.fecha) BETWEEN :desde AND :hasta
-       AND c.es_tanque_lleno = 1 $suc_filter_gastos
+        AND DATE(c.fecha) BETWEEN :desde AND :hasta
+     $join_odo
+     WHERE 1 $suc_filter_gastos
      GROUP BY v.id
      HAVING cargas >= 1
      ORDER BY rend_prom DESC",
-    ['desde' => $desde, 'hasta' => $hasta]
+    $params_r
 );
 
 // 7. Mantenimientos del período
@@ -293,12 +327,16 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         $litros  = (float)($kpi_comb['total_litros'] ?? 0);
         $kml     = (float)($kpi_comb['avg_kml'] ?? 0);
         $kms_rec = (int)($kpi_comb['km_recorridos'] ?? 0);
+        // Si las cargas no traen km recorridos, se estima con el odómetro del período.
+        $km_estimado = false;
+        if ($kms_rec <= 0 && $km_odometro_periodo > 0) { $kms_rec = $km_odometro_periodo; $km_estimado = true; }
+        if ($kml <= 0 && $kms_rec > 0 && $litros > 0)  { $kml = $kms_rec / $litros; }
         $costo_km = ($kms_rec > 0 && $gc > 0) ? $gc / $kms_rec : 0;
         $kpis2 = [
             ['Litros cargados',  number_format($litros, 1) . ' L',            'droplets',      'sky'],
-            ['Rend. promedio',   number_format($kml, 2) . ' km/L',            'gauge',         'emerald'],
+            ['Rend. promedio' . ($km_estimado ? ' (est.)' : ''),   ($kml > 0 ? number_format($kml, 2) : '0.00') . ' km/L',  'gauge', 'emerald'],
             ['Servicios mant.',  (int)($kpi_mant['total_servicios'] ?? 0),    'clipboard-list','violet'],
-            ['Costo por km',     $costo_km > 0 ? '$' . number_format($costo_km, 3) : '—', 'route', 'orange'],
+            ['Costo por km' . ($km_estimado ? ' (est.)' : ''),     $costo_km > 0 ? '$' . number_format($costo_km, 3) : '—', 'route', 'orange'],
         ];
         foreach ($kpis2 as [$label, $val, $icon, $color]):
         ?>
@@ -495,7 +533,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="bg-white rounded-xl border border-zinc-200 p-5">
             <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
                 <i data-lucide="fuel" class="w-4 h-4 text-bacal-700"></i>
-                Rendimiento combustible (km/L)
+                Rendimiento combustible (km/L) <span class="text-[10px] font-normal text-zinc-400 normal-case">· estimado por odómetro</span>
             </h3>
             <?php $max_rend = max(array_column($rendimiento, 'rend_prom') ?: [1]); ?>
             <div class="space-y-3">

@@ -268,7 +268,7 @@ if (es_post()) {
             <!-- Pie -->
             <div class="mt-8 pt-6 border-t border-zinc-200 text-center">
                 <div class="text-xs text-zinc-500">
-                    ¿Problemas para acceder? Contacta al área de Mantenimiento.
+                    ¿Problemas para acceder? Contacta a Sistemas de Bacal lfrodriguez@carnesbacal.com.mx.
                 </div>
             </div>
         </div>

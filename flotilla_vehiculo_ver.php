@@ -325,6 +325,35 @@ if (es_post() && $puede_gestionar) {
             }
         }
 
+        // --- Eliminar foto (solo administradores) ---
+        if ($op === 'foto_eliminar') {
+            if (!$es_admin) {
+                $errores[] = 'Solo un administrador puede eliminar fotos del vehículo.';
+            } else {
+                $foto_id = (int) input('foto_id', 0);
+                if (db_one("SHOW TABLES LIKE 'flotilla_vehiculo_fotos'")) {
+                    $ft_del = db_one("SELECT * FROM flotilla_vehiculo_fotos WHERE id = :id AND vehiculo_id = :v",
+                        ['id' => $foto_id, 'v' => $id]);
+                    if ($ft_del) {
+                        db_exec("DELETE FROM flotilla_vehiculo_fotos WHERE id = :id", ['id' => $foto_id]);
+                        // Borrar el archivo físico si existe.
+                        if (!empty($ft_del['foto_url'])) {
+                            $ruta_fs = __DIR__ . '/assets/' . $ft_del['foto_url'];
+                            if (is_file($ruta_fs)) @unlink($ruta_fs);
+                        }
+                        // Recalcular la foto "actual" del vehículo con la más reciente que quede.
+                        $latest = db_one("SELECT foto_url FROM flotilla_vehiculo_fotos WHERE vehiculo_id = :v ORDER BY tomada_en DESC, id DESC LIMIT 1", ['v' => $id]);
+                        db_exec("UPDATE flotilla_vehiculos SET foto_url = :f WHERE id = :id", ['f' => ($latest['foto_url'] ?? null), 'id' => $id]);
+                        flash_set('exito', 'Foto eliminada del historial.');
+                    } else {
+                        flash_set('error', 'La foto no existe o no pertenece a este vehículo.');
+                    }
+                }
+                header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=info"));
+                exit;
+            }
+        }
+
         // --- Viaje ---
         if ($op === 'viaje_crear') {
             $km_sal = (int) input('km_salida', 0);
@@ -382,6 +411,7 @@ $combustible = flotilla_combustible_vehiculo($id, 10, $cmb_desde ?: null, $cmb_h
 $mantenimts  = flotilla_mantenimientos_pendientes($id);
 $mant_abiertos_v = flotilla_mant_abiertos($id);
 $fotos       = flotilla_vehiculo_fotos($id);
+$odo_historial = flotilla_odometro_lista($id);
 $foto_dias   = flotilla_vehiculo_foto_dias($id);
 $foto_umbral = flotilla_foto_umbral();
 $gas_desde   = trim((string) input('gas_desde', ''));
@@ -496,10 +526,16 @@ require_once __DIR__ . '/config/header.php';
                         <?= $odo_dias > $odo_umbral ? 'Odómetro sin actualizar hace ' : 'Odómetro hace ' ?><?= $odo_dias ?> día<?= $odo_dias==1?'':'s' ?>
                     </div>
                     <?php endif; ?>
+                    <div class="flex items-center gap-2 justify-center mt-0.5">
                     <?php if ($puede_gestionar): ?>
                     <button type="button" onclick="document.getElementById('modal-km').classList.remove('hidden')"
-                            class="mt-0.5 text-[10px] font-bold text-bacal-700 hover:underline">Odómetro</button>
+                            class="text-[10px] font-bold text-bacal-700 hover:underline">Actualizar</button>
                     <?php endif; ?>
+                    <?php if (!empty($odo_historial)): ?>
+                    <button type="button" onclick="document.getElementById('modal-odo-hist').classList.remove('hidden')"
+                            class="text-[10px] font-bold text-zinc-500 hover:underline">Historial</button>
+                    <?php endif; ?>
+                    </div>
                 </div>
                 <?php if ($rendimiento_prom): ?>
                 <div class="bg-zinc-50 rounded-lg px-4 py-2">
@@ -598,12 +634,24 @@ require_once __DIR__ . '/config/header.php';
         <?php else: ?>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             <?php foreach ($fotos as $fi => $ft): ?>
-            <div class="border border-zinc-200 rounded-lg overflow-hidden relative">
+            <div class="border border-zinc-200 rounded-lg overflow-hidden relative group">
                 <a href="<?= url('assets/' . $ft['foto_url']) ?>" target="_blank" class="block aspect-square bg-zinc-50">
                     <img src="<?= url('assets/' . $ft['foto_url']) ?>" alt="Foto" class="w-full h-full object-cover" loading="lazy">
                 </a>
                 <?php if ($fi === 0): ?>
                 <span class="absolute top-1 left-1 text-[8px] font-extrabold bg-bacal-700 text-white px-1.5 py-0.5 rounded">ACTUAL</span>
+                <?php endif; ?>
+                <?php if ($es_admin): ?>
+                <form method="POST" class="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                      onsubmit="return confirm('¿Eliminar esta foto de forma permanente? Esta acción no se puede deshacer.');">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="op" value="foto_eliminar">
+                    <input type="hidden" name="foto_id" value="<?= (int) $ft['id'] ?>">
+                    <button type="submit" title="Eliminar foto (solo administradores)"
+                            class="w-6 h-6 rounded-full bg-red-600/90 text-white flex items-center justify-center hover:bg-red-700 shadow">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </form>
                 <?php endif; ?>
                 <div class="px-2 py-1 bg-white border-t border-zinc-100">
                     <div class="text-[10px] font-semibold text-zinc-700"><?= e(fmt_fecha($ft['tomada_en'], false)) ?></div>
@@ -1834,5 +1882,58 @@ function abrirCerrarMantV(id, fechaInicio, costo, nombre){
     </div>
 </div>
 <?php endif; ?>
+
+<!-- Modal: Historial de odómetro -->
+<div id="modal-odo-hist" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+        <div class="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
+            <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
+                <i data-lucide="gauge" class="w-4 h-4 text-bacal-700"></i> Historial de odómetro
+            </h3>
+            <button type="button" onclick="document.getElementById('modal-odo-hist').classList.add('hidden')" class="text-zinc-400 hover:text-zinc-700">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="overflow-y-auto">
+            <?php if (empty($odo_historial)): ?>
+            <div class="px-5 py-8 text-center text-sm text-zinc-400">Sin lecturas registradas.</div>
+            <?php else: ?>
+            <table class="w-full text-sm">
+                <thead class="bg-zinc-50 border-b border-zinc-200 sticky top-0">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fecha</th>
+                        <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Km</th>
+                        <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recorrido</th>
+                        <th class="px-4 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Origen</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    <?php foreach ($odo_historial as $oh):
+                        $delta = ($oh['km_anterior'] !== null) ? ((int) $oh['km'] - (int) $oh['km_anterior']) : null;
+                        $orig  = (string) ($oh['origen'] ?? '');
+                        $orig_txt = $orig === 'historico' ? 'Histórico (papel)' : ($orig === 'combustible' ? 'Carga combustible' : 'Manual');
+                    ?>
+                    <tr class="hover:bg-zinc-50">
+                        <td class="px-4 py-2 text-zinc-700 whitespace-nowrap"><?= e(fmt_fecha($oh['leido_en'], false)) ?></td>
+                        <td class="px-4 py-2 text-right font-mono font-semibold text-zinc-900"><?= number_format((int) $oh['km']) ?></td>
+                        <td class="px-4 py-2 text-right font-mono text-xs <?= ($delta !== null && $delta > 0) ? 'text-emerald-600' : 'text-zinc-300' ?>">
+                            <?= $delta !== null ? ('+' . number_format($delta)) : '—' ?>
+                        </td>
+                        <td class="px-4 py-2 text-[11px] text-zinc-500">
+                            <?= e($orig_txt) ?>
+                            <?php if (!empty($oh['usuario_nombre'])): ?><span class="text-zinc-300">· <?= e($oh['usuario_nombre']) ?></span><?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+        <div class="px-5 py-3 border-t border-zinc-100 text-right">
+            <button type="button" onclick="document.getElementById('modal-odo-hist').classList.add('hidden')"
+                    class="px-4 py-2 rounded-lg border border-zinc-300 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">Cerrar</button>
+        </div>
+    </div>
+</div>
 
 <?php require_once __DIR__ . '/config/footer.php'; ?>

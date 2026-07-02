@@ -61,7 +61,7 @@ require_once __DIR__ . '/config/header.php';
                 Bóveda
             </h2>
             <p class="text-xs text-zinc-500 mt-0.5">
-                Credenciales, accesos, instaladores, manuales y configuraciones del depto. de Sistemas.
+                Credenciales, accesos, instaladores, manuales y configuraciones del depto. de Mantenimiento.
             </p>
         </div>
 
