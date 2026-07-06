@@ -225,6 +225,8 @@ if (es_post() && $puede_gestionar) {
             $factura_m = null;
             $recm = flotilla_guardar_recibo($_FILES['factura'] ?? []);
             if ($recm['error']) $errores[] = $recm['error']; else $factura_m = $recm['ruta'];
+            $fotos_mc = flotilla_mant_guardar_fotos();
+            if ($fotos_mc['error']) $errores[] = $fotos_mc['error'];
 
             $md = [
                 'vehiculo_id'  => $id,
@@ -250,6 +252,8 @@ if (es_post() && $puede_gestionar) {
             }
             if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'fecha_fin'"))    $md['fecha_fin'] = $fecha_fin_m;
             if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'proveedor_id'")) $md['proveedor_id'] = $prov_id_m;
+            if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_antes_url'"))   $md['foto_antes_url']   = $fotos_mc['antes'];
+            if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_despues_url'")) $md['foto_despues_url'] = $fotos_mc['despues'];
 
             if ($md['nombre'] === '') $errores[] = 'El nombre del mantenimiento es obligatorio.';
             if ($fecha_fin_m && $fecha_fin_m < $fecha_m) $errores[] = 'La fecha de fin no puede ser anterior a la de inicio.';
@@ -287,10 +291,15 @@ if (es_post() && $puede_gestionar) {
                 $fac_c = $mc['archivo_url'];
                 $rc = flotilla_guardar_recibo($_FILES['factura'] ?? []);
                 if ($rc['error']) $errores[] = $rc['error']; elseif ($rc['ruta']) $fac_c = $rc['ruta'];
+                $fotos_cc = flotilla_mant_guardar_fotos();
+                if ($fotos_cc['error']) $errores[] = $fotos_cc['error'];
                 if (empty($errores)) {
                     $cf = $cost_c !== null ? $cost_c : ($mc['costo'] !== null ? (float) $mc['costo'] : null);
-                    db_exec("UPDATE flotilla_mant_historial SET fecha_fin=:ff, costo=:c, numero_orden=COALESCE(:no,numero_orden), archivo_url=:au WHERE id=:id",
-                        ['ff'=>$ff_c, 'c'=>$cf, 'no'=>$ord_c, 'au'=>$fac_c, 'id'=>$mid_c]);
+                    $set_cc = ''; $pcc = [];
+                    if (!empty($fotos_cc['antes'])   && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_antes_url'"))   { $set_cc .= ', foto_antes_url=:fa';   $pcc['fa']=$fotos_cc['antes']; }
+                    if (!empty($fotos_cc['despues']) && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_despues_url'")) { $set_cc .= ', foto_despues_url=:fd'; $pcc['fd']=$fotos_cc['despues']; }
+                    db_exec("UPDATE flotilla_mant_historial SET fecha_fin=:ff, costo=:c, numero_orden=COALESCE(:no,numero_orden), archivo_url=:au{$set_cc} WHERE id=:id",
+                        array_merge(['ff'=>$ff_c, 'c'=>$cf, 'no'=>$ord_c, 'au'=>$fac_c, 'id'=>$mid_c], $pcc));
                     flotilla_vehiculo_taller($id, false);
                     flotilla_mant_gasto_sync($mid_c, $id, $cf, $mc['taller'],
                         $mc['nombre'] . ($mc['taller'] ? " – {$mc['taller']}" : ''), $mc['fecha'], $ord_c ?: $mc['numero_orden'],
@@ -1165,6 +1174,14 @@ require_once __DIR__ . '/config/header.php';
                                 <?= fmt_fecha($h['fecha']) ?> · <?= number_format($h['km_odometro']) ?> km
                                 <?= $h['taller'] ? ' · ' . e($h['taller']) : '' ?>
                             </div>
+                            <?php $vh_fa=$h['foto_antes_url']??null; $vh_fd=$h['foto_despues_url']??null; $vh_fac=$h['archivo_url']??null; ?>
+                            <?php if ($vh_fa || $vh_fd || $vh_fac): ?>
+                            <div class="flex items-center gap-1.5 mt-1.5">
+                                <?php if ($vh_fa): ?><a href="<?= url('assets/'.$vh_fa) ?>" target="_blank" title="Foto antes"><img src="<?= url('assets/'.$vh_fa) ?>" class="w-9 h-9 rounded object-cover border border-zinc-200 hover:ring-2 hover:ring-bacal-300"></a><?php endif; ?>
+                                <?php if ($vh_fd): ?><a href="<?= url('assets/'.$vh_fd) ?>" target="_blank" title="Foto después"><img src="<?= url('assets/'.$vh_fd) ?>" class="w-9 h-9 rounded object-cover border border-zinc-200 hover:ring-2 hover:ring-bacal-300"></a><?php endif; ?>
+                                <?php if ($vh_fac): ?><a href="<?= url('assets/'.$vh_fac) ?>" target="_blank" title="Factura / recibo" class="inline-flex items-center gap-1 px-2 h-9 rounded border border-zinc-200 text-[11px] font-semibold text-bacal-700 hover:bg-bacal-50"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> Factura</a><?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <div class="text-right text-sm flex-shrink-0">
@@ -1242,6 +1259,16 @@ require_once __DIR__ . '/config/header.php';
                     <label class="block text-xs font-bold text-zinc-700 mb-1">Factura / recibo <span class="text-zinc-400 font-normal normal-case">(imagen o PDF)</span></label>
                     <input type="file" name="factura" accept="image/*,application/pdf"
                            class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Foto antes <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                        <input type="file" name="foto_antes" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Foto después <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                        <input type="file" name="foto_despues" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                    </div>
                 </div>
                 <p class="text-[11px] text-zinc-400">Sin fecha de fin = el vehículo queda "En taller" hasta que lo cierres.</p>
                 <div class="flex justify-end gap-2 pt-2 border-t border-zinc-100">
@@ -1821,6 +1848,16 @@ function validarKmVeh(form){
             <div>
                 <label class="block text-xs font-bold text-zinc-700 mb-1">Factura / recibo <span class="text-zinc-400 font-normal normal-case">(imagen o PDF)</span></label>
                 <input type="file" name="factura" accept="image/*,application/pdf" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto antes <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_antes" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto después <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_despues" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
             </div>
             <p class="text-xs text-zinc-400">Al cerrar, el vehículo regresa a "Activo".</p>
             <div class="flex justify-end gap-3 pt-2 border-t border-zinc-100">

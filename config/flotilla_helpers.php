@@ -764,6 +764,21 @@ function flotilla_guardar_foto(array $file): array {
     return ['ruta' => "uploads/$sub/$nombre", 'error' => null];
 }
 
+/**
+ * Guarda las fotos "antes" y "después" de un mantenimiento (ambas opcionales).
+ * Lee $_FILES['foto_antes'] y $_FILES['foto_despues'] y devuelve
+ * ['antes'=>ruta|null, 'despues'=>ruta|null, 'error'=>msg|null].
+ */
+function flotilla_mant_guardar_fotos(): array {
+    $out = ['antes' => null, 'despues' => null, 'error' => null];
+    foreach (['antes', 'despues'] as $k) {
+        $r = flotilla_guardar_foto($_FILES['foto_' . $k] ?? []);
+        if ($r['error']) { $out['error'] = 'Foto ' . $k . ': ' . $r['error']; return $out; }
+        $out[$k] = $r['ruta'];
+    }
+    return $out;
+}
+
 /** Historial de fotos de un vehículo (más reciente primero). */
 function flotilla_vehiculo_fotos(int $vid): array {
     try {

@@ -58,9 +58,12 @@ if (es_post() && $puede_gestionar) {
             $proveedor_id = null;
             if ($taller) { $pr = db_one("SELECT id FROM proveedores WHERE nombre = :n LIMIT 1", ['n' => $taller]); $proveedor_id = $pr['id'] ?? null; }
             $factura_url = null;
+            $fotos_m = ['antes' => null, 'despues' => null];
             if (empty($errores)) {
                 $rec = flotilla_guardar_recibo($_FILES['factura'] ?? []);
                 if ($rec['error']) $errores[] = $rec['error']; else $factura_url = $rec['ruta'];
+                $fm = flotilla_mant_guardar_fotos();
+                if ($fm['error']) $errores[] = $fm['error']; else $fotos_m = $fm;
             }
 
             if (empty($errores)) {
@@ -68,6 +71,8 @@ if (es_post() && $puede_gestionar) {
                     $cx=''; $vx=''; $px=[];
                     if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'fecha_fin'"))    { $cx.=', fecha_fin'; $vx.=', :fecha_fin'; $px['fecha_fin']=$fecha_fin; }
                     if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'proveedor_id'")) { $cx.=', proveedor_id'; $vx.=', :prov_id'; $px['prov_id']=$proveedor_id; }
+                    if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_antes_url'"))   { $cx.=', foto_antes_url'; $vx.=', :fa'; $px['fa']=$fotos_m['antes']; }
+                    if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_despues_url'")) { $cx.=', foto_despues_url'; $vx.=', :fd'; $px['fd']=$fotos_m['despues']; }
                     db_exec(
                         "INSERT INTO flotilla_mant_historial
                             (vehiculo_id, programa_id, nombre, descripcion, fecha, km_odometro,
@@ -145,9 +150,13 @@ if (es_post() && $puede_gestionar) {
                 $fac_e = $mant_e['archivo_url'];
                 $re = flotilla_guardar_recibo($_FILES['factura'] ?? []);
                 if ($re['error']) $errores[] = $re['error']; elseif ($re['ruta']) $fac_e = $re['ruta'];
+                $fotos_e = flotilla_mant_guardar_fotos();
+                if ($fotos_e['error']) $errores[] = $fotos_e['error'];
                 if (empty($errores)) {
                     $cx_e = ''; $px_e = [];
                     if (db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'proveedor_id'")) { $cx_e = ', proveedor_id = :prov_id'; $px_e['prov_id'] = $prov_id_e; }
+                    if (!empty($fotos_e['antes'])   && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_antes_url'"))   { $cx_e .= ', foto_antes_url = :fa';   $px_e['fa'] = $fotos_e['antes']; }
+                    if (!empty($fotos_e['despues']) && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_despues_url'")) { $cx_e .= ', foto_despues_url = :fd'; $px_e['fd'] = $fotos_e['despues']; }
                     db_exec("UPDATE flotilla_mant_historial SET
                                 nombre=:nombre, descripcion=:desc, fecha=:fecha, km_odometro=:km,
                                 taller=:taller, tecnico=:tec, costo=:costo, numero_orden=:orden,
@@ -179,10 +188,15 @@ if (es_post() && $puede_gestionar) {
                 $rec = flotilla_guardar_recibo($_FILES['factura'] ?? []);
                 if ($rec['error']) { $errores[] = $rec['error']; }
                 elseif ($rec['ruta']) { $factura_url = $rec['ruta']; }
+                $fotos_c = flotilla_mant_guardar_fotos();
+                if ($fotos_c['error']) $errores[] = $fotos_c['error'];
                 if (empty($errores)) {
                     $costo_final = $costo_c !== null ? $costo_c : ($mant['costo'] !== null ? (float) $mant['costo'] : null);
-                    db_exec("UPDATE flotilla_mant_historial SET fecha_fin = :ff, costo = :c, numero_orden = COALESCE(:no, numero_orden), archivo_url = :au WHERE id = :id",
-                        ['ff' => $fecha_fin_c, 'c' => $costo_final, 'no' => $orden_c, 'au' => $factura_url, 'id' => $mid]);
+                    $set_fc = ''; $pfc = [];
+                    if (!empty($fotos_c['antes'])   && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_antes_url'"))   { $set_fc .= ', foto_antes_url = :fa';   $pfc['fa'] = $fotos_c['antes']; }
+                    if (!empty($fotos_c['despues']) && db_one("SHOW COLUMNS FROM flotilla_mant_historial LIKE 'foto_despues_url'")) { $set_fc .= ', foto_despues_url = :fd'; $pfc['fd'] = $fotos_c['despues']; }
+                    db_exec("UPDATE flotilla_mant_historial SET fecha_fin = :ff, costo = :c, numero_orden = COALESCE(:no, numero_orden), archivo_url = :au{$set_fc} WHERE id = :id",
+                        array_merge(['ff' => $fecha_fin_c, 'c' => $costo_final, 'no' => $orden_c, 'au' => $factura_url, 'id' => $mid], $pfc));
                     flotilla_vehiculo_taller((int) $mant['vehiculo_id'], false);
                     flotilla_mant_gasto_sync($mid, (int) $mant['vehiculo_id'], $costo_final, $mant['taller'],
                         $mant['nombre'] . ($mant['taller'] ? " – {$mant['taller']}" : ''), $mant['fecha'],
@@ -539,6 +553,7 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Taller</th>
                         <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide" data-orden-tipo="num">Costo</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide hidden lg:table-cell">Próximo</th>
+                        <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wide">Adjuntos</th>
                         <th class="px-4 py-3"></th>
                     </tr>
                 </thead>
@@ -574,6 +589,32 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                             <?php else: ?>
                             <span class="text-zinc-400">—</span>
                             <?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3">
+                            <?php
+                                $h_fa  = $h['foto_antes_url']   ?? null;
+                                $h_fd  = $h['foto_despues_url'] ?? null;
+                                $h_fac = $h['archivo_url']      ?? null;
+                            ?>
+                            <div class="flex items-center gap-1.5">
+                                <?php if ($h_fa): ?>
+                                <a href="<?= url('assets/' . $h_fa) ?>" target="_blank" title="Foto antes">
+                                    <img src="<?= url('assets/' . $h_fa) ?>" class="w-8 h-8 rounded object-cover border border-zinc-200 hover:ring-2 hover:ring-bacal-300">
+                                </a>
+                                <?php endif; ?>
+                                <?php if ($h_fd): ?>
+                                <a href="<?= url('assets/' . $h_fd) ?>" target="_blank" title="Foto después">
+                                    <img src="<?= url('assets/' . $h_fd) ?>" class="w-8 h-8 rounded object-cover border border-zinc-200 hover:ring-2 hover:ring-bacal-300">
+                                </a>
+                                <?php endif; ?>
+                                <?php if ($h_fac): ?>
+                                <a href="<?= url('assets/' . $h_fac) ?>" target="_blank" title="Factura / recibo"
+                                   class="w-8 h-8 rounded border border-zinc-200 flex items-center justify-center text-bacal-700 hover:bg-bacal-50">
+                                    <i data-lucide="file-text" class="w-4 h-4"></i>
+                                </a>
+                                <?php endif; ?>
+                                <?php if (!$h_fa && !$h_fd && !$h_fac): ?><span class="text-zinc-300">—</span><?php endif; ?>
+                            </div>
                         </td>
                         <td class="px-4 py-3 text-right">
                             <?php if ($puede_gestionar): ?>
@@ -714,6 +755,16 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                     <input type="file" name="factura" accept="image/*,application/pdf"
                            class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
                 </div>
+                <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Foto antes <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                        <input type="file" name="foto_antes" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Foto después <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                        <input type="file" name="foto_despues" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                    </div>
+                </div>
 
                 <div class="sm:col-span-2 border-t border-zinc-100 pt-3">
                     <p class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Programar próximo mantenimiento</p>
@@ -826,6 +877,16 @@ function abrirModalMant(vid, nombre) {
                 <input type="file" name="factura" accept="image/*,application/pdf"
                        class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
             </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto antes <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_antes" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto después <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_despues" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+            </div>
             <p class="text-xs text-zinc-400">Al cerrar, el vehículo regresa a "Activo".</p>
             <div class="flex justify-end gap-3 pt-2 border-t border-zinc-100">
                 <button type="button" onclick="document.getElementById('modal-cerrar-mant').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-zinc-300 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">Cancelar</button>
@@ -905,6 +966,16 @@ function abrirCerrarMant(id, fechaInicio, costo, nombre) {
                 <label class="block text-xs font-bold text-zinc-700 mb-1">Factura / recibo <span class="text-zinc-400 font-normal normal-case">(opcional, reemplaza la actual)</span></label>
                 <input type="file" name="factura" accept="image/*,application/pdf" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
             </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto antes <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_antes" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Foto después <span class="text-zinc-400 font-normal normal-case">(opcional)</span></label>
+                    <input type="file" name="foto_despues" accept="image/*" class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                </div>
+            </div>
             <div class="flex justify-end gap-3 pt-2 border-t border-zinc-100">
                 <button type="button" onclick="document.getElementById('modal-editar-mant').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-zinc-300 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">Cancelar</button>
                 <button type="submit" class="px-5 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Guardar cambios</button>
@@ -941,6 +1012,9 @@ function abrirEditarMant(id){
     f.numero_orden.value = d.orden || '';
     f.descripcion.value = d.desc || '';
     f.notas.value = d.notas || '';
+    if (f.foto_antes)   f.foto_antes.value = '';
+    if (f.foto_despues) f.foto_despues.value = '';
+    if (f.factura)      f.factura.value = '';
     document.getElementById('modal-editar-mant').classList.remove('hidden');
 }
 </script>
