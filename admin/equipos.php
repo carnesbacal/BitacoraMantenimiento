@@ -335,12 +335,18 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
     // Filtros
     $f_sucursal = (int) input('sucursal', 0);
     $f_tipo     = trim((string) input('tipo', ''));
+    $f_area     = (int) input('area', 0);
+    $f_estado   = trim((string) input('estado', ''));
+    $f_activo   = trim((string) input('activo', ''));
     $f_q        = trim((string) input('q', ''));
 
     $where = [];
     $params = [];
     if ($f_sucursal > 0) { $where[] = "e.sucursal_id = :sid"; $params['sid'] = $f_sucursal; }
     if ($f_tipo !== '')  { $where[] = "e.tipo = :t"; $params['t'] = $f_tipo; }
+    if ($f_area > 0)     { $where[] = "e.area_id = :aid"; $params['aid'] = $f_area; }
+    if (in_array($f_estado, ['nuevo','en_uso','en_reparacion','dado_de_baja'], true)) { $where[] = "e.estado_vida = :ev"; $params['ev'] = $f_estado; }
+    if ($f_activo === '1' || $f_activo === '0') { $where[] = "e.activo = :act"; $params['act'] = (int) $f_activo; }
     if ($f_q !== '')     {
         $where[] = "(e.codigo_inventario LIKE :q1 OR e.nombre LIKE :q2 OR e.marca LIKE :q3 OR e.modelo LIKE :q4)";
         $params['q1'] = "%$f_q%"; $params['q2'] = "%$f_q%"; $params['q3'] = "%$f_q%"; $params['q4'] = "%$f_q%";
@@ -350,7 +356,8 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
     $equipos = db_all(
         "SELECT e.*, s.nombre sucursal_nombre, s.codigo sucursal_codigo, a.nombre area_nombre,
                 pr.nombre proveedor_nombre,
-                (SELECT COUNT(*) FROM incidencias WHERE equipo_id = e.id) AS incidencias_count
+                (SELECT COUNT(*) FROM incidencias WHERE equipo_id = e.id) AS incidencias_count,
+                (SELECT COUNT(*) FROM equipo_componentes WHERE equipo_id = e.id) AS componentes_count
          FROM equipos e
          INNER JOIN sucursales s ON e.sucursal_id = s.id
          LEFT JOIN areas a ON e.area_id = a.id
@@ -364,29 +371,80 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
 <?php render_admin_header('Equipos / activos', count($equipos) . ' equipo(s) en inventario', url('admin/equipos.php?accion=nuevo'), 'Nuevo equipo'); ?>
 
 <!-- Filtros -->
-<form method="GET" class="flex flex-wrap gap-2 mb-4">
-    <div class="relative flex-1 min-w-[200px] max-w-md">
-        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
-        <input type="text" name="q" value="<?= e($f_q) ?>" placeholder="Código, nombre, marca, modelo..."
-               class="w-full pl-9 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+<?php $adv_count = ($f_sucursal>0?1:0)+($f_tipo!==''?1:0)+($f_area>0?1:0)+($f_estado!==''?1:0)+($f_activo!==''?1:0); ?>
+<form method="GET" class="mb-4" x-data="{ abierto: <?= $adv_count > 0 ? 'true' : 'false' ?> }">
+    <div class="flex flex-wrap items-center gap-2">
+        <div class="relative flex-1 min-w-[200px] max-w-md">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"></i>
+            <input type="text" name="q" value="<?= e($f_q) ?>" placeholder="Código, nombre, marca, modelo..."
+                   class="w-full pl-9 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+        </div>
+        <button type="button" @click="abierto = !abierto"
+                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors <?= $adv_count > 0 ? 'border-bacal-300 bg-bacal-50 text-bacal-700' : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50' ?>">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4"></i> Filtros
+            <?php if ($adv_count > 0): ?><span class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-bacal-700 text-white text-[10px] font-bold"><?= $adv_count ?></span><?php endif; ?>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform" :class="abierto ? 'rotate-180' : ''"></i>
+        </button>
+        <?php if ($f_q !== '' || $adv_count > 0): ?>
+        <a href="<?= url('admin/equipos.php') ?>" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm hover:bg-zinc-50">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i> Limpiar
+        </a>
+        <?php endif; ?>
     </div>
-    <select name="sucursal" onchange="this.form.submit()"
-            class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-        <option value="">Todas las sucursales</option>
-        <?php foreach ($sucursales as $s): ?>
-        <option value="<?= $s['id'] ?>" <?= $f_sucursal == $s['id'] ? 'selected' : '' ?>><?= e($s['nombre']) ?></option>
-        <?php endforeach; ?>
-    </select>
-    <select name="tipo" onchange="this.form.submit()"
-            class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-        <option value="">Todos los tipos</option>
-        <?php foreach ($tipos_existentes as $t): ?>
-        <option value="<?= e($t['tipo']) ?>" <?= $f_tipo === $t['tipo'] ? 'selected' : '' ?>><?= e($t['tipo']) ?></option>
-        <?php endforeach; ?>
-    </select>
-    <?php if ($f_q !== '' || $f_sucursal > 0 || $f_tipo !== ''): ?>
-    <a href="<?= url('admin/equipos.php') ?>" class="px-3 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm hover:bg-zinc-50">Limpiar</a>
-    <?php endif; ?>
+
+    <div x-show="abierto" x-collapse x-cloak class="mt-3">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 bg-zinc-50 border border-zinc-200 rounded-lg p-4">
+            <div>
+                <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Sucursal</label>
+                <select name="sucursal" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">Todas</option>
+                    <?php foreach ($sucursales as $s): ?>
+                    <option value="<?= $s['id'] ?>" <?= $f_sucursal == $s['id'] ? 'selected' : '' ?>><?= e($s['nombre']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Tipo</label>
+                <select name="tipo" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">Todos</option>
+                    <?php foreach ($tipos_existentes as $t): ?>
+                    <option value="<?= e($t['tipo']) ?>" <?= $f_tipo === $t['tipo'] ? 'selected' : '' ?>><?= e($t['tipo']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Área</label>
+                <select name="area" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">Todas</option>
+                    <?php foreach ($areas as $ar): ?>
+                    <option value="<?= $ar['id'] ?>" <?= $f_area == $ar['id'] ? 'selected' : '' ?>><?= e($ar['nombre']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Estado</label>
+                <select name="estado" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">Todos</option>
+                    <?php foreach (['nuevo'=>'Nuevo','en_uso'=>'En uso','en_reparacion'=>'En reparación','dado_de_baja'=>'Dado de baja'] as $ev => $lbl): ?>
+                    <option value="<?= $ev ?>" <?= $f_estado === $ev ? 'selected' : '' ?>><?= $lbl ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Disponibilidad</label>
+                <select name="activo" onchange="this.form.submit()"
+                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <option value="">Activos e inactivos</option>
+                    <option value="1" <?= $f_activo === '1' ? 'selected' : '' ?>>Solo activos</option>
+                    <option value="0" <?= $f_activo === '0' ? 'selected' : '' ?>>Solo inactivos</option>
+                </select>
+            </div>
+        </div>
+    </div>
 </form>
 
 <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
@@ -400,13 +458,14 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Sucursal</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Área</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proveedor</th>
+                    <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Comp.</th>
                     <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fallas</th>
                     <th class="px-4 py-2.5"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100">
                 <?php foreach ($equipos as $eq): ?>
-                <tr class="hover:bg-zinc-50 group <?= !$eq['activo'] ? 'opacity-50' : '' ?>">
+                <tr class="hover:bg-zinc-50 group cursor-pointer <?= !$eq['activo'] ? 'opacity-50' : '' ?>" data-href="<?= url('equipo_ver.php?id=' . $eq['id']) ?>">
                     <td class="px-4 py-2.5 font-mono text-xs font-bold">
                         <a href="<?= url('equipo_ver.php?id=' . $eq['id']) ?>" class="text-zinc-700 hover:text-bacal-700 hover:underline"><?= e($eq['codigo_inventario']) ?></a>
                     </td>
@@ -430,6 +489,13 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                         <?php else: ?>
                         <span class="text-zinc-400">—</span>
                         <?php endif; ?>
+                    </td>
+                    <td class="px-4 py-2.5 text-center">
+                        <a href="<?= url('equipo_componentes.php?id=' . $eq['id']) ?>"
+                           class="inline-flex items-center gap-1 text-xs font-semibold <?= (int) ($eq['componentes_count'] ?? 0) > 0 ? 'text-bacal-700 hover:underline' : 'text-zinc-300 hover:text-bacal-700' ?>"
+                           title="Ver / agregar componentes">
+                            <i data-lucide="cpu" class="w-3.5 h-3.5"></i> <?= (int) ($eq['componentes_count'] ?? 0) ?>
+                        </a>
                     </td>
                     <td class="px-4 py-2.5 text-center">
                         <?php if ((int) $eq['incidencias_count'] > 0): ?>
@@ -465,12 +531,22 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                 </tr>
                 <?php endforeach; ?>
                 <?php if (empty($equipos)): ?>
-                <tr><td colspan="8" class="px-4 py-12 text-center text-sm text-zinc-500 italic">Sin equipos que coincidan.</td></tr>
+                <tr><td colspan="9" class="px-4 py-12 text-center text-sm text-zinc-500 italic">Sin equipos que coincidan.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+// Toda la fila lleva a la ficha del equipo (sin estorbar enlaces/botones internos).
+document.querySelectorAll('tr[data-href]').forEach(function (tr) {
+    tr.addEventListener('click', function (e) {
+        if (e.target.closest('a, button, form, input, select, label')) return;
+        window.location = tr.dataset.href;
+    });
+});
+</script>
 
 <?php endif; ?>
 

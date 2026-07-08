@@ -20,7 +20,10 @@ require_once __DIR__ . '/db.php';
 // ============================================================================
 
 function listar_refacciones(array $filtros = []): array {
-    $where = ["r.activo = 1"];
+    $estado = $filtros['estado'] ?? 'activas';
+    $where = [];
+    if ($estado === 'inactivas')  $where[] = "r.activo = 0";
+    elseif ($estado !== 'todas')  $where[] = "r.activo = 1";
     $params = [];
 
     if (!empty($filtros['busqueda'])) {
@@ -52,7 +55,7 @@ function listar_refacciones(array $filtros = []): array {
         $params['sid_low'] = (int) $filtros['sucursal_id'];
     }
 
-    $where_sql = "WHERE " . implode(' AND ', $where);
+    $where_sql = $where ? ("WHERE " . implode(' AND ', $where)) : "";
 
     // Si hay sucursal_id en filtros, traer el stock de esa sucursal
     $sucursal_filtro = !empty($filtros['sucursal_id']) ? (int) $filtros['sucursal_id'] : null;

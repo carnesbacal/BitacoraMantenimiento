@@ -18,6 +18,8 @@ require_once __DIR__ . '/config/incidencias_helpers.php';
 require_once __DIR__ . '/config/notificaciones_helpers.php';
 require_once __DIR__ . '/config/inteligencia_helpers.php';
 require_once __DIR__ . '/config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/config/refacciones_helpers.php';
+require_once __DIR__ . '/config/incidencia_refacciones_helpers.php';
 
 requerir_login();
 
@@ -301,6 +303,33 @@ if (es_post()) {
                 db()->commit();
                 registrar_auditoria('crear_incidencia', 'incidencias', $incidencia_id, "Folio $folio");
 
+                // === Refacciones utilizadas (varias). Fuera de la transacción principal:
+                // cada registro maneja su propio stock/transacción. Si una falla (p. ej. sin stock)
+                // no cancela la incidencia; se avisa cuáles no se pudieron agregar. ===
+                $ok_refacciones = 0;
+                $errores_refacciones = [];
+                if (function_exists('registrar_refaccion_en_incidencia')) {
+                    $ref_ids    = (array) input('refaccion_id', []);
+                    $ref_cants  = (array) input('cantidad_refaccion', []);
+                    $ref_costos = (array) input('costo_unitario_refaccion', []);
+                    foreach ($ref_ids as $i => $rid_raw) {
+                        $rid  = (int) $rid_raw;
+                        $cant = (float) ($ref_cants[$i] ?? 0);
+                        if ($rid <= 0 || $cant <= 0) continue;
+                        try {
+                            registrar_refaccion_en_incidencia([
+                                'incidencia_id'  => $incidencia_id,
+                                'refaccion_id'   => $rid,
+                                'cantidad'       => $cant,
+                                'costo_unitario' => ((float) ($ref_costos[$i] ?? 0)) ?: null,
+                            ], (int) $u['id']);
+                            $ok_refacciones++;
+                        } catch (Throwable $e) {
+                            $errores_refacciones[] = $e->getMessage();
+                        }
+                    }
+                }
+
                 // Si se aplicó una regla de auto-asignación, registrarlo
                 if ($regla_aplicada) {
                     registrar_uso_regla((int) $regla_aplicada['regla_id']);
@@ -322,12 +351,12 @@ if (es_post()) {
                 notificar_critica_nueva($incidencia_id);
 
                 $msg = "Incidencia $folio creada correctamente.";
-                if (!empty($errores_adjuntos)) {
-                    $msg .= " Hubo problemas con algunos adjuntos: " . implode(' ', $errores_adjuntos);
-                    flash_set('warning', $msg);
-                } else {
-                    flash_set('success', $msg);
-                }
+                if (!empty($ok_refacciones)) $msg .= " Se registraron {$ok_refacciones} refacción(es).";
+                $warns = [];
+                if (!empty($errores_adjuntos))    $warns[] = "Adjuntos: " . implode(' ', $errores_adjuntos);
+                if (!empty($errores_refacciones)) $warns[] = "Refacciones no agregadas: " . implode(' ', $errores_refacciones);
+                if (!empty($warns)) { flash_set('warning', $msg . ' ' . implode(' ', $warns)); }
+                else { flash_set('success', $msg); }
 
                 header('Location: ' . url('incidencia_ver.php?id=' . $incidencia_id));
                 exit;
@@ -342,6 +371,15 @@ if (es_post()) {
 // ----------------------------------------------------------------------------
 // Renderizar
 // ----------------------------------------------------------------------------
+$catalogo_refacciones = [];
+$ref_costos_map = [];
+if (db_one("SHOW TABLES LIKE 'refacciones'")) {
+    $catalogo_refacciones = db_all("SELECT id, codigo, nombre, unidad_medida, costo_unitario FROM refacciones WHERE activo = 1 ORDER BY nombre ASC");
+    foreach ($catalogo_refacciones as $cr) {
+        $ref_costos_map[(int) $cr['id']] = $cr['costo_unitario'] !== null ? (float) $cr['costo_unitario'] : '';
+    }
+}
+
 require_once __DIR__ . '/config/header.php';
 ?>
 
@@ -788,6 +826,63 @@ require_once __DIR__ . '/config/header.php';
             </div>
         </div>
 
+        <!-- Sección 5.8: Refacciones utilizadas -->
+        <?php if (!empty($catalogo_refacciones)): ?>
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
+                <i data-lucide="package" class="w-4 h-4 text-bacal-700"></i> Refacciones utilizadas
+                <span class="text-xs font-normal text-zinc-500">(opcional)</span>
+            </h3>
+            <p class="text-xs text-zinc-500 mb-4">Del inventario interno. Al guardar se descuentan del stock de la sucursal seleccionada. Puedes agregar varias.</p>
+
+            <template x-if="refacciones.length === 0">
+                <p class="text-sm text-zinc-400 py-1">Sin refacciones. Usa "Agregar refacción".</p>
+            </template>
+
+            <div class="space-y-3">
+                <template x-for="(r, idx) in refacciones" :key="idx">
+                    <div class="grid grid-cols-12 gap-2 items-end border border-zinc-100 rounded-lg p-3 bg-zinc-50/60">
+                        <div class="col-span-12 sm:col-span-6">
+                            <label class="block text-[11px] font-bold text-zinc-600 mb-1 uppercase tracking-wide">Refacción</label>
+                            <select name="refaccion_id[]" x-model="r.id" @change="autoCosto(idx)"
+                                    class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                                <option value="">— Selecciona —</option>
+                                <?php foreach ($catalogo_refacciones as $cr): ?>
+                                <option value="<?= (int) $cr['id'] ?>"><?= e(($cr['codigo'] ? $cr['codigo'] . ' · ' : '') . $cr['nombre']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-span-5 sm:col-span-2">
+                            <label class="block text-[11px] font-bold text-zinc-600 mb-1 uppercase tracking-wide">Cantidad</label>
+                            <input type="number" min="0" step="0.01" name="cantidad_refaccion[]" x-model="r.cantidad"
+                                   class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-right font-mono focus:outline-none focus:border-bacal-700">
+                        </div>
+                        <div class="col-span-5 sm:col-span-3">
+                            <label class="block text-[11px] font-bold text-zinc-600 mb-1 uppercase tracking-wide">Costo unit.</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                                <input type="number" min="0" step="0.01" name="costo_unitario_refaccion[]" x-model="r.costo"
+                                       placeholder="0.00"
+                                       class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-right font-mono focus:outline-none focus:border-bacal-700">
+                            </div>
+                        </div>
+                        <div class="col-span-2 sm:col-span-1 flex justify-end">
+                            <button type="button" @click="removeRefaccion(idx)" title="Quitar refacción"
+                                    class="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <button type="button" @click="addRefaccion()"
+                    class="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-zinc-300 text-sm font-semibold text-bacal-700 hover:bg-bacal-50">
+                <i data-lucide="plus" class="w-4 h-4"></i> Agregar refacción
+            </button>
+        </div>
+        <?php endif; ?>
+
         <!-- Sección 4: Reincidencias detectadas (dinámica) -->
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6"
              x-show="reincidencias.length > 0 || cargandoReincidencias"
@@ -990,7 +1085,7 @@ require_once __DIR__ . '/config/header.php';
                 </div>
                 <p class="text-[10px] text-zinc-500 mt-2 flex items-center gap-1">
                     <i data-lucide="info" class="w-3 h-3"></i>
-                    Las refacciones de stock interno se suman aparte automáticamente desde la pestaña de refacciones.
+                    Las refacciones del inventario interno se agregan en la siguiente sección y descuentan del stock.
                 </p>
             </div>
         </div>
@@ -1204,6 +1299,16 @@ function formIncidencia() {
 
         archivosSeleccionados: [],
         dragActivo: false,
+
+        // === Refacciones utilizadas (varias) ===
+        refacciones: [],
+        refCostos: <?= json_encode($ref_costos_map, JSON_UNESCAPED_UNICODE) ?>,
+        addRefaccion() { this.refacciones.push({ id: '', cantidad: 1, costo: '' }); this.$nextTick(() => { if (window.lucide) lucide.createIcons(); }); },
+        removeRefaccion(i) { this.refacciones.splice(i, 1); },
+        autoCosto(i) {
+            const c = this.refCostos[this.refacciones[i].id];
+            if (c !== undefined && c !== null && c !== '' && !this.refacciones[i].costo) this.refacciones[i].costo = c;
+        },
 
         categorias: <?= json_encode($categorias, JSON_UNESCAPED_UNICODE) ?>,
 
