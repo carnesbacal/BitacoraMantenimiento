@@ -62,9 +62,10 @@ if ($es_exportacion) {
     csv_fila(['  Mano de obra', number_format($resumen['mano_obra'], 2)]);
     csv_fila(['  Materiales proveedor', number_format($resumen['materiales'], 2)]);
     csv_fila(['Costo interno (refacciones)', number_format($resumen['interno'], 2)]);
+    csv_fila(['Incidencias en el período', $resumen['num_total']]);
+    csv_fila(['  Internas', $resumen['num_total'] - $resumen['con_proveedor']]);
+    csv_fila(['  Externas (con proveedor)', $resumen['con_proveedor']]);
     csv_fila(['Incidencias con costo', $resumen['con_costo']]);
-    csv_fila(['Incidencias con proveedor', $resumen['con_proveedor']]);
-    csv_fila(['Costo promedio por incidencia', number_format($resumen['promedio'], 2)]);
     csv_fila(['']);
 
     csv_fila(['INCIDENCIAS MÁS CARAS']);
@@ -228,9 +229,9 @@ require_once __DIR__ . '/../config/header.php';
             <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['pct_interno'] ?>% del total</div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
-            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Promedio / incidencia</div>
-            <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($resumen['promedio'])) ?></div>
-            <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['con_costo'] ?> con costo · <?= $resumen['con_proveedor'] ?> con proveedor</div>
+            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Incidencias</div>
+            <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= number_format($resumen['num_total']) ?></div>
+            <div class="text-[10px] text-zinc-400 mt-1.5"><?= number_format($resumen['num_total'] - $resumen['con_proveedor']) ?> internas · <?= number_format($resumen['con_proveedor']) ?> externas</div>
         </div>
     </div>
 

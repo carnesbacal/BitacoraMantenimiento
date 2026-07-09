@@ -19,6 +19,7 @@ require_once __DIR__ . '/config/incidencias_helpers.php';
 require_once __DIR__ . '/config/notificaciones_helpers.php';
 require_once __DIR__ . '/config/comunicacion_helpers.php';
 require_once __DIR__ . '/config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/config/incidencia_refacciones_helpers.php';
 
 requerir_login();
 
@@ -266,6 +267,7 @@ $relacionadas = cargar_incidencias_relacionadas($id, $incidencia['incidencia_pad
 
 // Costos y proveedor
 $costos = costo_incidencia($id);
+$refacciones_usadas = function_exists('listar_refacciones_de_incidencia') ? listar_refacciones_de_incidencia($id) : [];
 $proveedor_nombre = null;
 if (!empty($incidencia['proveedor_escalado_id'])) {
     $prov = db_one("SELECT nombre, servicio, telefono FROM proveedores WHERE id = :id",
@@ -481,6 +483,120 @@ require_once __DIR__ . '/config/header.php';
                         <button type="submit" class="px-3 py-1.5 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold">Guardar</button>
                     </div>
                 </form>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Desglose de costos -->
+            <?php if ($costos['tiene_costo'] || $proveedor_nombre || !empty($incidencia['proveedor_externo_info']) || !empty($refacciones_usadas)):
+                $ver_moi = puede_ver_mano_obra_interna();
+                $total_mostrar = $ver_moi ? $costos['total'] : $costos['total_visible'];
+            ?>
+            <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
+                <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2 mb-4">
+                    <i data-lucide="hand-coins" class="w-4 h-4 text-bacal-700"></i> Desglose de costos
+                </h3>
+
+                <!-- Quién lo resolvió (externo o interno, sin porcentaje) -->
+                <?php if ($proveedor_nombre): ?>
+                <div class="flex items-start gap-2.5 mb-4 p-3 rounded-lg bg-bacal-50 border border-bacal-100">
+                    <div class="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0"><i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[10px] font-bold text-bacal-700 uppercase tracking-wide">Resuelto por proveedor externo</div>
+                        <div class="font-semibold text-sm text-zinc-900 truncate"><?= e($proveedor_nombre) ?></div>
+                        <div class="text-[11px] text-zinc-500">
+                            <?php if (!empty($proveedor_servicio)): ?><?= e($proveedor_servicio) ?><?php endif; ?>
+                            <?php if (!empty($proveedor_telefono)): ?> · <?= e($proveedor_telefono) ?><?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php elseif (!empty($incidencia['proveedor_externo_info'])): ?>
+                <div class="flex items-start gap-2.5 mb-4 p-3 rounded-lg bg-zinc-50 border border-zinc-100">
+                    <div class="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0"><i data-lucide="user-cog" class="w-5 h-5 text-zinc-600"></i></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">Proveedor externo (no registrado)</div>
+                        <div class="text-sm text-zinc-900"><?= e($incidencia['proveedor_externo_info']) ?></div>
+                    </div>
+                </div>
+                <?php else: ?>
+                <div class="flex items-center gap-2 mb-4 p-3 rounded-lg bg-zinc-50 border border-zinc-100 text-xs text-zinc-600">
+                    <i data-lucide="users" class="w-4 h-4"></i> Resuelto con recursos internos
+                </div>
+                <?php endif; ?>
+
+                <!-- Refacciones utilizadas (detalle por pieza) -->
+                <?php if (!empty($refacciones_usadas)): ?>
+                <div class="mb-4">
+                    <div class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1"><i data-lucide="package" class="w-3 h-3"></i> Refacciones utilizadas</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-[10px] text-zinc-400 uppercase tracking-wide border-b border-zinc-100">
+                                    <th class="text-left py-1.5 font-semibold">Refacción</th>
+                                    <th class="text-right py-1.5 font-semibold">Cant.</th>
+                                    <th class="text-right py-1.5 font-semibold">Costo unit.</th>
+                                    <th class="text-right py-1.5 font-semibold">Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-50">
+                            <?php foreach ($refacciones_usadas as $ru):
+                                $ru_cant = (float) $ru['cantidad'];
+                                $ru_cu   = $ru['costo_unitario'] !== null ? (float) $ru['costo_unitario'] : null;
+                                $ru_ct   = $ru['costo_total'] !== null ? (float) $ru['costo_total'] : null;
+                            ?>
+                                <tr>
+                                    <td class="py-1.5 pr-2">
+                                        <a href="<?= url('refaccion_ver.php?id=' . (int) $ru['refaccion_id']) ?>" class="font-medium text-zinc-800 hover:text-bacal-700"><?= e($ru['refaccion_nombre']) ?></a>
+                                        <div class="text-[10px] font-mono text-zinc-400"><?= e($ru['refaccion_codigo']) ?><?= !empty($ru['componente_nombre']) ? ' · ' . e($ru['componente_nombre']) : '' ?></div>
+                                    </td>
+                                    <td class="py-1.5 text-right text-zinc-600 whitespace-nowrap"><?= e(rtrim(rtrim(number_format($ru_cant, 2), '0'), '.')) ?> <span class="text-[10px] text-zinc-400"><?= e($ru['unidad_medida']) ?></span></td>
+                                    <td class="py-1.5 text-right text-zinc-600"><?= $ru_cu !== null ? e(fmt_dinero($ru_cu)) : '<span class="text-zinc-300">—</span>' ?></td>
+                                    <td class="py-1.5 text-right font-semibold text-zinc-900"><?= $ru_ct !== null ? e(fmt_dinero($ru_ct)) : '<span class="text-zinc-300">—</span>' ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                            <tfoot>
+                                <tr class="border-t border-zinc-200">
+                                    <td colspan="3" class="py-1.5 text-right text-[11px] font-bold text-zinc-500 uppercase tracking-wide">Subtotal refacciones</td>
+                                    <td class="py-1.5 text-right font-bold text-zinc-900"><?= e(fmt_dinero($costos['refacciones'])) ?></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Otros conceptos + total -->
+                <dl class="space-y-2 text-sm border-t border-zinc-100 pt-3">
+                    <?php if ($costos['mano_obra'] > 0): ?>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Mano de obra (proveedor)</dt><dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['mano_obra'])) ?></dd></div>
+                    <?php endif; ?>
+                    <?php if ($costos['materiales_proveedor'] > 0): ?>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Materiales (proveedor)</dt><dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['materiales_proveedor'])) ?></dd></div>
+                    <?php endif; ?>
+                    <?php if ($costos['materiales_comprados'] > 0): ?>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Materiales comprados</dt><dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['materiales_comprados'])) ?></dd></div>
+                    <?php endif; ?>
+                    <?php if ($costos['refacciones'] > 0 && empty($refacciones_usadas)): ?>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Refacciones internas</dt><dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['refacciones'])) ?></dd></div>
+                    <?php endif; ?>
+                    <?php if ($ver_moi && $costos['mano_obra_interna'] > 0): ?>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500 flex items-center gap-1">Mano de obra interna <span class="text-[9px] text-bacal-700 bg-bacal-50 px-1 rounded">confid.</span></dt><dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['mano_obra_interna'])) ?></dd></div>
+                    <?php if ($costos['horas_trabajadas'] > 0): ?>
+                    <div class="flex justify-between gap-2 text-[10px] text-zinc-400 -mt-1"><dt><?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h × <?= e(fmt_dinero($costos['tarifa_aplicada'])) ?>/h</dt><dd></dd></div>
+                    <?php endif; ?>
+                    <?php endif; ?>
+                    <div class="flex justify-between gap-2 pt-2 mt-1 border-t border-zinc-200 items-center">
+                        <dt class="text-zinc-900 font-bold uppercase tracking-wide text-xs">Total</dt>
+                        <dd class="font-display text-xl font-extrabold text-bacal-700"><?= e(fmt_dinero($total_mostrar)) ?></dd>
+                    </div>
+                </dl>
+
+                <?php if ($costos['horas_trabajadas'] > 0): ?>
+                <div class="flex items-center gap-1.5 mt-3 text-[11px] text-zinc-500"><i data-lucide="clock" class="w-3 h-3"></i> Tiempo activo: <strong class="text-zinc-700"><?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h</strong></div>
+                <?php endif; ?>
+                <?php if (!empty($incidencia['costo_notas'])): ?>
+                <p class="text-[11px] text-zinc-500 mt-3 pt-2 border-t border-zinc-100 italic"><?= e($incidencia['costo_notas']) ?></p>
                 <?php endif; ?>
             </div>
             <?php endif; ?>
@@ -947,135 +1063,6 @@ require_once __DIR__ . '/config/header.php';
                         <?php endif; ?>
                     </div>
                 </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- Costos -->
-            <?php if ($costos['tiene_costo'] || $proveedor_nombre || !empty($incidencia['proveedor_externo_info'])): ?>
-            <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
-                <h3 class="text-xs font-bold text-zinc-600 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <i data-lucide="hand-coins" class="w-3.5 h-3.5"></i> Costos
-                </h3>
-
-                <!-- Proveedor -->
-                <?php if ($proveedor_nombre): ?>
-                <div class="flex items-start gap-2.5 mb-3 pb-3 border-b border-zinc-100">
-                    <div class="w-9 h-9 rounded-lg bg-bacal-50 flex items-center justify-center flex-shrink-0">
-                        <i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-semibold text-sm text-zinc-900 truncate"><?= e($proveedor_nombre) ?></div>
-                        <div class="text-[11px] text-zinc-500">
-                            <?php if (!empty($proveedor_servicio)): ?><?= e($proveedor_servicio) ?><?php endif; ?>
-                            <?php if (!empty($proveedor_telefono)): ?> · <?= e($proveedor_telefono) ?><?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-                <?php elseif (!empty($incidencia['proveedor_externo_info'])): ?>
-                <div class="flex items-start gap-2.5 mb-3 pb-3 border-b border-zinc-100">
-                    <div class="w-9 h-9 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0">
-                        <i data-lucide="user-cog" class="w-5 h-5 text-zinc-600"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="text-sm text-zinc-900"><?= e($incidencia['proveedor_externo_info']) ?></div>
-                        <div class="text-[10px] text-zinc-400">Proveedor externo (no registrado)</div>
-                    </div>
-                </div>
-                <?php else: ?>
-                <div class="flex items-center gap-2 mb-3 pb-3 border-b border-zinc-100 text-xs text-zinc-500">
-                    <i data-lucide="users" class="w-4 h-4"></i> Resuelto con recursos internos
-                </div>
-                <?php endif; ?>
-
-                <!-- Desglose -->
-                <?php
-                $ver_moi = puede_ver_mano_obra_interna();
-                $total_mostrar = $ver_moi ? $costos['total'] : $costos['total_visible'];
-                $interno_mostrar = $ver_moi ? $costos['interno'] : ($costos['refacciones'] + $costos['materiales_comprados']);
-                ?>
-                <dl class="space-y-1.5 text-xs">
-                    <?php if ($costos['mano_obra'] > 0): ?>
-                    <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500">Mano de obra proveedor</dt>
-                        <dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['mano_obra'])) ?></dd>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($costos['materiales_proveedor'] > 0): ?>
-                    <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500">Materiales proveedor</dt>
-                        <dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['materiales_proveedor'])) ?></dd>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($costos['materiales_comprados'] > 0): ?>
-                    <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500">Materiales comprados</dt>
-                        <dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['materiales_comprados'])) ?></dd>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($costos['refacciones'] > 0): ?>
-                    <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500 flex items-center gap-1">
-                            Refacciones internas
-                            <a href="<?= url('incidencia_refacciones.php?id=' . $id) ?>" class="text-bacal-700" title="Ver refacciones">
-                                <i data-lucide="external-link" class="w-3 h-3"></i>
-                            </a>
-                        </dt>
-                        <dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['refacciones'])) ?></dd>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($ver_moi && $costos['mano_obra_interna'] > 0): ?>
-                    <div class="flex justify-between gap-2">
-                        <dt class="text-zinc-500 flex items-center gap-1">
-                            Mano de obra interna
-                            <span class="text-[9px] text-bacal-700 bg-bacal-50 px-1 rounded">confid.</span>
-                        </dt>
-                        <dd class="font-semibold text-zinc-900"><?= e(fmt_dinero($costos['mano_obra_interna'])) ?></dd>
-                    </div>
-                    <?php if ($costos['horas_trabajadas'] > 0): ?>
-                    <div class="flex justify-between gap-2 text-[10px] text-zinc-400 -mt-1">
-                        <dt><?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h × <?= e(fmt_dinero($costos['tarifa_aplicada'])) ?>/h</dt>
-                        <dd></dd>
-                    </div>
-                    <?php endif; ?>
-                    <?php endif; ?>
-                    <div class="flex justify-between gap-2 pt-2 mt-1 border-t border-zinc-200">
-                        <dt class="text-zinc-900 font-bold uppercase tracking-wide">Total</dt>
-                        <dd class="font-display text-base font-extrabold text-bacal-700"><?= e(fmt_dinero($total_mostrar)) ?></dd>
-                    </div>
-                </dl>
-
-                <?php if ($costos['horas_trabajadas'] > 0): ?>
-                <div class="flex items-center gap-1.5 mt-2 text-[11px] text-zinc-500">
-                    <i data-lucide="clock" class="w-3 h-3"></i>
-                    Tiempo activo: <strong class="text-zinc-700"><?= e(rtrim(rtrim(number_format($costos['horas_trabajadas'], 2), '0'), '.')) ?> h</strong>
-                </div>
-                <?php endif; ?>
-
-                <?php if (!empty($incidencia['costo_notas'])): ?>
-                <p class="text-[10px] text-zinc-500 mt-2 pt-2 border-t border-zinc-100 italic">
-                    <?= e($incidencia['costo_notas']) ?>
-                </p>
-                <?php endif; ?>
-
-                <!-- Mini desglose interno/externo -->
-                <?php if ($total_mostrar > 0): ?>
-                <div class="flex gap-1 mt-3">
-                    <?php
-                    $pct_ext = $total_mostrar > 0 ? round(($costos['externo'] / $total_mostrar) * 100) : 0;
-                    $pct_int = 100 - $pct_ext;
-                    ?>
-                    <?php if ($pct_ext > 0): ?>
-                    <div class="h-1.5 rounded-l-full bg-bacal-600" style="width: <?= $pct_ext ?>%" title="Externo: <?= $pct_ext ?>%"></div>
-                    <?php endif; ?>
-                    <?php if ($pct_int > 0): ?>
-                    <div class="h-1.5 <?= $pct_ext > 0 ? 'rounded-r-full' : 'rounded-full' ?> bg-zinc-400" style="width: <?= $pct_int ?>%" title="Interno: <?= $pct_int ?>%"></div>
-                    <?php endif; ?>
-                </div>
-                <div class="flex justify-between text-[9px] text-zinc-400 mt-1">
-                    <span>Externo <?= $pct_ext ?>%</span>
-                    <span>Interno <?= $pct_int ?>%</span>
-                </div>
-                <?php endif; ?>
             </div>
             <?php endif; ?>
 

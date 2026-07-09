@@ -12,6 +12,7 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/incidencias_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/../config/incidencia_refacciones_helpers.php';
 
 requerir_login();
 
@@ -29,6 +30,7 @@ $historial   = cargar_historial($id);
 
 // Costos
 $costos = costo_incidencia($id);
+$refacciones_usadas = function_exists('listar_refacciones_de_incidencia') ? listar_refacciones_de_incidencia($id) : [];
 $proveedor_nombre = null;
 if (!empty($i['proveedor_escalado_id'])) {
     $prov = db_one("SELECT nombre, servicio FROM proveedores WHERE id = :id",
@@ -252,6 +254,36 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
         $ver_moi = puede_ver_mano_obra_interna();
         $total_pdf = $ver_moi ? $costos['total'] : $costos['total_visible'];
         ?>
+
+        <?php if (!empty($refacciones_usadas)): ?>
+        <div class="mb-3">
+            <div class="text-[10px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Refacciones utilizadas</div>
+            <table class="w-full text-sm border border-zinc-200">
+                <thead>
+                    <tr class="bg-zinc-50 text-[10px] text-zinc-500 uppercase tracking-wide">
+                        <th class="px-3 py-1.5 text-left font-bold">Refacción</th>
+                        <th class="px-3 py-1.5 text-right font-bold">Cant.</th>
+                        <th class="px-3 py-1.5 text-right font-bold">Costo unit.</th>
+                        <th class="px-3 py-1.5 text-right font-bold">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($refacciones_usadas as $ru):
+                    $ru_cu = $ru['costo_unitario'] !== null ? (float) $ru['costo_unitario'] : null;
+                    $ru_ct = $ru['costo_total'] !== null ? (float) $ru['costo_total'] : null;
+                ?>
+                    <tr class="border-t border-zinc-100">
+                        <td class="px-3 py-1.5 text-zinc-700"><?= e($ru['refaccion_nombre']) ?> <span class="text-[10px] font-mono text-zinc-400"><?= e($ru['refaccion_codigo']) ?></span></td>
+                        <td class="px-3 py-1.5 text-right text-zinc-600"><?= e(rtrim(rtrim(number_format((float) $ru['cantidad'], 2), '0'), '.')) ?> <?= e($ru['unidad_medida']) ?></td>
+                        <td class="px-3 py-1.5 text-right text-zinc-600"><?= $ru_cu !== null ? e(fmt_dinero($ru_cu)) : '—' ?></td>
+                        <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= $ru_ct !== null ? e(fmt_dinero($ru_ct)) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+
         <table class="w-full text-sm border border-zinc-200">
             <tbody>
                 <?php if ($costos['mano_obra'] > 0): ?>
@@ -274,7 +306,7 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
                 <?php endif; ?>
                 <?php if ($costos['refacciones'] > 0): ?>
                 <tr class="border-b border-zinc-100">
-                    <td class="px-3 py-1.5 text-zinc-600">Refacciones internas (stock)</td>
+                    <td class="px-3 py-1.5 text-zinc-600">Refacciones internas (subtotal)</td>
                     <td class="px-3 py-1.5 text-right font-medium text-zinc-900"><?= e(fmt_dinero($costos['refacciones'])) ?></td>
                 </tr>
                 <?php endif; ?>

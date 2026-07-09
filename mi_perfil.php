@@ -43,14 +43,21 @@ if (es_post()) {
                     $errores[] = 'El email no parece válido.';
                 }
 
+                $escala = (int) input('escala_interfaz', 100);
+                if (!in_array($escala, [90, 100, 110, 125], true)) $escala = 100;
+
                 if (empty($errores)) {
+                    $esc_col = ''; $esc_param = [];
+                    if (db_one("SHOW COLUMNS FROM usuarios LIKE 'escala_interfaz'")) {
+                        $esc_col = ', escala_interfaz = :esc'; $esc_param['esc'] = $escala;
+                    }
                     db_exec(
                         "UPDATE usuarios SET
                             nombre_completo = :n, email = :e, telefono = :t, puesto = :pu,
-                            pagina_inicio_preferida = :pag
+                            pagina_inicio_preferida = :pag{$esc_col}
                          WHERE id = :id",
-                        ['n' => $nombre, 'e' => $email ?: null, 't' => $telefono ?: null,
-                         'pu' => $puesto ?: null, 'pag' => $pagina, 'id' => $id]
+                        array_merge(['n' => $nombre, 'e' => $email ?: null, 't' => $telefono ?: null,
+                         'pu' => $puesto ?: null, 'pag' => $pagina, 'id' => $id], $esc_param)
                     );
 
                     // Actualizar la sesión con los nuevos datos
@@ -60,6 +67,7 @@ if (es_post()) {
                     $_SESSION['usuario']['telefono'] = $telefono ?: null;
                     $_SESSION['usuario']['puesto'] = $puesto ?: null;
                     $_SESSION['usuario']['pagina_inicio_preferida'] = $pagina;
+                    $_SESSION['usuario']['escala_interfaz'] = $escala;
 
                     registrar_auditoria('editar_perfil', 'usuarios', $id, 'Editó su perfil');
                     flash_set('success', 'Perfil actualizado correctamente.');
@@ -278,6 +286,7 @@ require_once __DIR__ . '/config/header.php';
 
             <!-- Mantengo pagina_inicio en hidden para no perderla -->
             <input type="hidden" name="pagina_inicio_preferida" value="<?= e($u_data['pagina_inicio_preferida'] ?? 'dashboard.php') ?>">
+            <input type="hidden" name="escala_interfaz" value="<?= (int) ($u_data['escala_interfaz'] ?? 100) ?>">
 
             <div class="flex justify-between items-center pt-3 border-t border-zinc-100">
                 <a href="<?= url('cambiar_password.php') ?>" class="text-xs font-semibold text-bacal-700 hover:text-bacal-800 flex items-center gap-1.5">
@@ -367,6 +376,20 @@ require_once __DIR__ . '/config/header.php';
                     <option value="base_conocimiento.php" <?= $u_data['pagina_inicio_preferida'] === 'base_conocimiento.php' ? 'selected' : '' ?>>Base de conocimiento</option>
                 </select>
                 <p class="text-[10px] text-zinc-500 mt-1">Cuando inicies sesión te dirigiremos directamente a esta página.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-zinc-700 mb-2 uppercase tracking-wide">Tamaño / escala de la interfaz</label>
+                <select name="escala_interfaz"
+                        onchange="document.documentElement.style.fontSize = (this.value == 100 ? '' : this.value + '%')"
+                        class="w-full md:w-80 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    <?php $esc_actual = (int) ($u_data['escala_interfaz'] ?? 100); ?>
+                    <option value="90"  <?= $esc_actual === 90  ? 'selected' : '' ?>>Compacta (90%)</option>
+                    <option value="100" <?= $esc_actual === 100 ? 'selected' : '' ?>>Normal (100%)</option>
+                    <option value="110" <?= $esc_actual === 110 ? 'selected' : '' ?>>Grande (110%)</option>
+                    <option value="125" <?= $esc_actual === 125 ? 'selected' : '' ?>>Muy grande (125%)</option>
+                </select>
+                <p class="text-[10px] text-zinc-500 mt-1">Agranda o reduce todo (texto, botones, espaciado). El cambio se previsualiza al instante y se aplica en toda la app al guardar.</p>
             </div>
 
             <div class="flex justify-end pt-3 border-t border-zinc-100">

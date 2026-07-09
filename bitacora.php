@@ -702,17 +702,17 @@ $hay_filtros = !empty($f_busqueda) || $f_sucursal || $f_area || $f_categoria
                     <tr>
                         <?php
                         $columnas = [
-                            ['folio', 'Folio', 'w-32'],
+                            ['fecha_evento', 'Fecha', 'w-28'],
                             ['titulo', 'Incidencia', ''],
                             [null, 'Sucursal', 'w-24'],
                             [null, 'Área', 'w-28'],
                             ['severidad', 'Severidad', 'w-28'],
                             ['estado', 'Estado', 'w-28'],
                             [null, 'Asignado a', 'w-32'],
-                            ['fecha_evento', 'Fecha evento', 'w-32'],
                             [null, 'Tiempo', 'w-20 text-right'],
                             [null, 'Costo', 'w-24 text-right'],
                             [null, 'SLA', 'w-16 text-center'],
+                            ['folio', 'Folio', 'w-24'],
                         ];
                         foreach ($columnas as [$campo, $label, $clase_extra]):
                             $es_ordenable = $campo !== null;
@@ -742,11 +742,11 @@ $hay_filtros = !empty($f_busqueda) || $f_sucursal || $f_area || $f_categoria
                         $sla = sla_estado($i);
                     ?>
                     <tr class="hover:bg-zinc-50 transition-colors group">
-                        <!-- Folio -->
+                        <!-- Fecha del evento (columna principal) -->
                         <td class="px-3 py-2.5 align-top">
-                            <a href="<?= url('incidencia_ver.php?id=' . $i['id']) ?>"
-                               class="font-mono text-xs font-bold text-zinc-700 hover:text-bacal-700">
-                                <?= e($i['folio']) ?>
+                            <a href="<?= url('incidencia_ver.php?id=' . $i['id']) ?>" class="block">
+                                <div class="text-sm font-semibold text-zinc-900"><?= e(fmt_fecha($i['fecha_evento'], false)) ?></div>
+                                <div class="text-[10px] text-zinc-400"><?= e(fmt_tiempo_relativo($i['fecha_evento'])) ?></div>
                             </a>
                         </td>
 
@@ -817,12 +817,6 @@ $hay_filtros = !empty($f_busqueda) || $f_sucursal || $f_area || $f_categoria
                             <?php endif; ?>
                         </td>
 
-                        <!-- Fecha evento -->
-                        <td class="px-3 py-2.5 align-top">
-                            <div class="text-xs text-zinc-700"><?= e(fmt_fecha($i['fecha_evento'], false)) ?></div>
-                            <div class="text-[10px] text-zinc-400"><?= e(fmt_tiempo_relativo($i['fecha_evento'])) ?></div>
-                        </td>
-
                         <!-- Tiempo activo -->
                         <td class="px-3 py-2.5 align-top text-right">
                             <?php if ((float) ($i['horas_trabajadas'] ?? 0) > 0): ?>
@@ -875,6 +869,14 @@ $hay_filtros = !empty($f_busqueda) || $f_sucursal || $f_area || $f_categoria
                             <?php else: ?>
                                 <span class="text-zinc-300">—</span>
                             <?php endif; ?>
+                        </td>
+
+                        <!-- Folio (menos preferencial) -->
+                        <td class="px-3 py-2.5 align-top">
+                            <a href="<?= url('incidencia_ver.php?id=' . $i['id']) ?>"
+                               class="font-mono text-[10px] font-bold text-zinc-400 hover:text-bacal-700">
+                                <?= e($i['folio']) ?>
+                            </a>
                         </td>
 
                         <!-- Acciones -->

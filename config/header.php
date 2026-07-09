@@ -38,7 +38,11 @@ try {
     $notif_count = 0;
 }
 ?><!DOCTYPE html>
-<html lang="es" class="h-full">
+<html lang="es" class="h-full"<?php
+    $__escala = (int) ($_SESSION['usuario']['escala_interfaz'] ?? 100);
+    if (!in_array($__escala, [90, 100, 110, 125], true)) $__escala = 100;
+    if ($__escala !== 100) echo ' style="font-size: ' . $__escala . '%"';
+?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
