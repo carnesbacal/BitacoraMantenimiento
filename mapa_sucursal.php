@@ -260,6 +260,10 @@ require_once __DIR__ . '/config/header.php';
                      :class="modoEdicion ? 'cursor-move' : 'cursor-pointer'"
                      @mousedown="iniciarArrastre($event, <?= (int) $eq['id'] ?>)"
                      @click.stop="abrirEquipo($event, <?= (int) $eq['id'] ?>)">
+                    <!-- Nombre siempre visible sobre el ícono -->
+                    <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-1.5 py-0.5 rounded bg-white/90 border border-zinc-200 shadow-sm text-[9px] font-semibold text-zinc-700 leading-tight whitespace-nowrap max-w-[120px] truncate pointer-events-none">
+                        <?= e($eq['nombre']) ?>
+                    </div>
                     <div class="w-5 h-5 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white text-[8px] font-bold transition-transform hover:scale-125"
                          style="background-color: <?= e($color) ?>"
                          title="<?= e($eq['codigo_inventario']) ?> · <?= e($eq['nombre']) ?>">
@@ -267,6 +271,13 @@ require_once __DIR__ . '/config/header.php';
                         <i data-lucide="alert-circle" class="w-3 h-3"></i>
                         <?php endif; ?>
                     </div>
+                    <!-- Quitar del mapa (solo en modo edición) -->
+                    <button type="button" x-show="modoEdicion && esAdmin" x-cloak
+                            @mousedown.stop @click.stop="quitarDelMapa(<?= (int) $eq['id'] ?>)"
+                            class="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center shadow hover:bg-red-700 z-30"
+                            title="Quitar del mapa (vuelve a Sin ubicar)">
+                        <span class="text-[11px] leading-none">&times;</span>
+                    </button>
                     <div class="absolute z-20 left-1/2 -translate-x-1/2 -top-2 -translate-y-full
                                 bg-zinc-900 text-white text-xs rounded-lg px-2.5 py-1.5 whitespace-nowrap
                                 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
@@ -503,6 +514,26 @@ function mapaSucursal() {
                 });
                 const data = await resp.json();
                 if (!data.ok) alert('Error al guardar: ' + (data.error || 'desconocido'));
+            } catch (e) {
+                alert('Error de conexión: ' + e.message);
+            }
+        },
+
+        async quitarDelMapa(equipoId) {
+            if (!confirm('¿Quitar este equipo del mapa? Regresará a "Sin ubicar".')) return;
+            try {
+                const fd = new FormData();
+                fd.append('_csrf', '<?= e(csrf_token()) ?>');
+                fd.append('equipo_id', equipoId);
+                fd.append('planta_id', 'null');
+                fd.append('pos_x', 'null');
+                fd.append('pos_y', 'null');
+                const resp = await fetch('<?= url('api/equipo_posicion.php') ?>', {
+                    method: 'POST', body: fd, credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.ok) location.reload();
+                else alert('Error al quitar: ' + (data.error || 'desconocido'));
             } catch (e) {
                 alert('Error de conexión: ' + e.message);
             }
