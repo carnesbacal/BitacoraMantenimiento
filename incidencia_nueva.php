@@ -126,6 +126,17 @@ if (es_post()) {
         if (!$valores['fecha_evento'])
             $errores[] = 'La fecha del evento es obligatoria.';
 
+        // Reincidencia: aceptar folio o ID; resolver a ID válido (o limpiar si no aplica/ no existe).
+        if ($valores['es_reincidencia'] && trim((string) $valores['incidencia_padre_id']) !== '') {
+            $padre_raw = trim((string) $valores['incidencia_padre_id']);
+            $prow = ctype_digit($padre_raw)
+                ? db_one("SELECT id FROM incidencias WHERE id = :v", ['v' => (int) $padre_raw])
+                : db_one("SELECT id FROM incidencias WHERE folio = :v", ['v' => $padre_raw]);
+            $valores['incidencia_padre_id'] = $prow ? (int) $prow['id'] : '';
+        } else {
+            $valores['incidencia_padre_id'] = '';
+        }
+
         // Si no es admin/ingeniero, forzar su sucursal
         if (!tiene_permiso('ver_todas_sucursales') && $u['sucursal_id']) {
             $valores['sucursal_id'] = (int) $u['sucursal_id'];

@@ -89,6 +89,12 @@ $valores = [
     'costo_materiales_comprados' => $incidencia['costo_materiales_comprados'] ?? '',
 ];
 
+// En la carga inicial, mostrar el FOLIO de la incidencia original (más legible que el ID).
+if (!empty($valores['incidencia_padre_id'])) {
+    $__pf = db_one("SELECT folio FROM incidencias WHERE id = :id", ['id' => (int) $valores['incidencia_padre_id']]);
+    if ($__pf) $valores['incidencia_padre_id'] = $__pf['folio'];
+}
+
 // ----------------------------------------------------------------------------
 // Procesar POST
 // ----------------------------------------------------------------------------
@@ -108,6 +114,26 @@ if (es_post()) {
         if (!$valores['area_id'])                            $errores[] = 'El área es obligatoria.';
         if (!$valores['severidad_id'])                       $errores[] = 'La severidad es obligatoria.';
         if (!$valores['estado_id'])                          $errores[] = 'El estado es obligatorio.';
+
+        // Reincidencia: aceptar FOLIO o ID de la incidencia original y resolverlo a su ID real.
+        $padre_id = null;
+        if ($valores['es_reincidencia']) {
+            $padre_raw = trim((string) $valores['incidencia_padre_id']);
+            if ($padre_raw !== '') {
+                if (ctype_digit($padre_raw)) {
+                    $prow = db_one("SELECT id FROM incidencias WHERE id = :v", ['v' => (int) $padre_raw]);
+                } else {
+                    $prow = db_one("SELECT id FROM incidencias WHERE folio = :v", ['v' => $padre_raw]);
+                }
+                if (!$prow) {
+                    $errores[] = 'No se encontró una incidencia con ese folio o ID (incidencia original).';
+                } elseif ((int) $prow['id'] === (int) $id) {
+                    $errores[] = 'Una incidencia no puede ser reincidencia de sí misma.';
+                } else {
+                    $padre_id = (int) $prow['id'];
+                }
+            }
+        }
 
         // No permitir mover de sucursal si el usuario no tiene permiso
         if (!tiene_permiso('ver_todas_sucursales')) {
@@ -214,7 +240,7 @@ if (es_post()) {
                         'repp' => trim((string) $valores['reportante_puesto']) ?: null,
                         'asig' => $valores['asignado_a_id'] ?: null,
                         'reinc' => $valores['es_reincidencia'],
-                        'padre' => $valores['incidencia_padre_id'] ?: null,
+                        'padre' => $padre_id,
                         'fe' => date('Y-m-d H:i:s', strtotime($valores['fecha_evento'])),
                         'fa' => $fecha_atencion,
                         'fr' => $fecha_resolucion,
@@ -471,21 +497,40 @@ require_once __DIR__ . '/config/header.php';
         </div>
 
         <!-- Sección: Reincidencia -->
-        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6">
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6" x-data="reincBuscar()">
             <h3 class="font-display text-base font-bold text-zinc-900 mb-3 flex items-center gap-2">
                 <i data-lucide="rotate-ccw" class="w-4 h-4 text-purple-600"></i> Reincidencia
             </h3>
             <label class="flex items-center gap-2 text-sm cursor-pointer mb-3">
-                <input type="checkbox" name="es_reincidencia" value="1" <?= $valores['es_reincidencia'] ? 'checked' : '' ?>
+                <input type="checkbox" name="es_reincidencia" value="1" x-model="esReinc"
                        class="rounded border-zinc-300 text-purple-600 focus:ring-purple-500">
                 <span class="text-zinc-700">Esta incidencia es una reincidencia</span>
             </label>
-            <div>
-                <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Folio o ID de la incidencia original (opcional)</label>
-                <input type="text" name="incidencia_padre_id"
-                       value="<?= e((string) $valores['incidencia_padre_id']) ?>"
-                       placeholder="ID numérico"
+            <div class="relative">
+                <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Folio o título de la incidencia original (opcional)</label>
+                <input type="text" name="incidencia_padre_id" x-model="q" autocomplete="off"
+                       @input.debounce.300ms="buscar()" @focus="buscar()"
+                       placeholder="Escribe folio o título…"
                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                <div x-show="buscando" x-cloak class="absolute right-3 top-8 text-[10px] text-zinc-400">buscando…</div>
+                <div x-show="abierto && sugerencias.length > 0" x-cloak @click.outside="abierto = false"
+                     class="absolute z-30 mt-1 w-full bg-white border border-zinc-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    <template x-for="s in sugerencias" :key="s.id">
+                        <button type="button" @click="elegir(s)"
+                                class="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-zinc-50 last:border-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-mono text-[11px] font-bold text-purple-700" x-text="s.folio"></span>
+                                <span class="text-[10px] text-zinc-400" x-text="(s.sucursal_codigo ? s.sucursal_codigo + ' · ' : '') + (s.fecha_evento ? s.fecha_evento.substring(0,10) : '')"></span>
+                            </div>
+                            <div class="text-sm text-zinc-800 truncate" x-text="s.titulo"></div>
+                        </button>
+                    </template>
+                </div>
+                <div x-show="abierto && !buscando && q.length >= 2 && sugerencias.length === 0" x-cloak
+                     class="absolute z-30 mt-1 w-full bg-white border border-zinc-200 rounded-lg shadow-lg px-3 py-2 text-xs text-zinc-400">
+                    Sin coincidencias.
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-1">Empieza a escribir el folio o el título y elige la incidencia de la lista.</p>
             </div>
         </div>
 
@@ -739,6 +784,31 @@ require_once __DIR__ . '/config/header.php';
 </div>
 
 <script>
+function reincBuscar() {
+    return {
+        q: <?= json_encode((string) $valores['incidencia_padre_id']) ?>,
+        esReinc: <?= $valores['es_reincidencia'] ? 'true' : 'false' ?>,
+        sugerencias: [],
+        buscando: false,
+        abierto: false,
+        buscar() {
+            const term = this.q.trim();
+            if (term.length < 2) { this.sugerencias = []; this.abierto = false; return; }
+            this.buscando = true; this.abierto = true;
+            fetch('<?= url('api/incidencias_autocompletar.php') ?>?q=' + encodeURIComponent(term) + '&excluir=<?= (int) $id ?>', { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(d => { this.sugerencias = Array.isArray(d) ? d : []; this.buscando = false; })
+                .catch(() => { this.buscando = false; });
+        },
+        elegir(s) {
+            this.q = s.folio;
+            this.esReinc = true;
+            this.abierto = false;
+            this.sugerencias = [];
+        },
+    };
+}
+
 function formEditar() {
     return {
         sucursalId: '<?= e((string) $valores['sucursal_id']) ?>',
