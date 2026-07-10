@@ -177,6 +177,26 @@ if (es_post() && $puede_gestionar) {
             }
         }
 
+        if ($op === 'estimar_km_gps' && tiene_permiso('administrar')) {
+            $act = 0; $skip = 0;
+            if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+                $cargas = db_all("SELECT id, vehiculo_id, DATE(fecha) f FROM flotilla_combustible WHERE km_odometro <= 0 OR km_odometro IS NULL");
+                foreach ($cargas as $cg) {
+                    $est = flotilla_km_odometro_estimado((int) $cg['vehiculo_id'], (string) $cg['f']);
+                    if ($est !== null && $est > 0) {
+                        db_exec("UPDATE flotilla_combustible SET km_odometro = :km WHERE id = :id", ['km' => $est, 'id' => $cg['id']]);
+                        $act++;
+                    } else {
+                        $skip++;
+                    }
+                }
+                registrar_auditoria('estimar_km_gps', 'flotilla_combustible', 0, "{$act} estimadas, {$skip} sin dato");
+            }
+            flash_set('exito', "Km estimado en {$act} carga(s) antigua(s). {$skip} quedaron sin km (fuera de la cobertura del GPS).");
+            header('Location: ' . url('flotilla_combustible.php'));
+            exit;
+        }
+
         if ($op === 'eliminar' && tiene_permiso('administrar')) {
             $del_id = (int) input('del_id', 0);
             db_exec("DELETE FROM flotilla_combustible WHERE id = :id", ['id' => $del_id]);
@@ -271,6 +291,17 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                 class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-semibold flex items-center gap-1.5">
             <i data-lucide="gauge" class="w-4 h-4"></i> Actualizar odómetro
         </button>
+        <?php if (tiene_permiso('administrar')): ?>
+        <button type="button"
+                onclick="if(confirm('¿Estimar el km del odómetro de las cargas ANTIGUAS (las que no tienen km) usando el GPS?\n\nSolo afecta cargas sin km capturado; no toca las que ya tienen.')) document.getElementById('form-estimar-gps').submit();"
+                class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-semibold flex items-center gap-1.5"
+                title="Rellena el km de las cargas viejas de Xiga usando el historial del GPS">
+            <i data-lucide="route" class="w-4 h-4"></i> Estimar km antiguos (GPS)
+        </button>
+        <form id="form-estimar-gps" method="POST" class="hidden">
+            <?= csrf_input() ?><input type="hidden" name="op" value="estimar_km_gps">
+        </form>
+        <?php endif; ?>
         <?php endif; ?>
     </div>
 

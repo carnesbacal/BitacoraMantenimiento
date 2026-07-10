@@ -23,7 +23,7 @@ $_fnav = [
 // Links de importación (solo admins)
 $_fnav_import = tiene_permiso('administrar') ? [
     'flotilla_importar_xiga'      => ['flotilla_importar_xiga.php',      'upload',    'Import. XIGA'],
-    'flotilla_importar_vehiculos' => ['flotilla_importar_vehiculos.php', 'truck',     'Import. Flotilla'],
+    'flotilla_importar_monsat'    => ['flotilla_importar_monsat.php',    'route',     'Import. Monsat'],
 ] : [];
 ?>
 <nav class="flex items-center gap-1 overflow-x-auto pb-0.5 mb-5 border-b border-zinc-200 -mt-1" aria-label="Módulo Flotilla">

@@ -812,3 +812,314 @@ function flotilla_vehiculo_foto_dias(int $vid): ?int {
 function flotilla_foto_umbral(): int {
     return max(1, (int) config_get('foto_umbral_dias', 90));
 }
+
+
+/**
+ * Parsea un reporte "Información general" de Monsat/GPSWOX (HTML con extensión .xls).
+ * Devuelve ['dispositivo'=>string|null, 'periodo'=>string|null,
+ *           'filas'=>[ ['fecha'=>'Y-m-d','km'=>float,'litros'=>?float,'costo'=>?float], ... ]].
+ */
+function flotilla_monsat_parse(string $html): array {
+    // Un archivo puede traer VARIOS dispositivos. Devuelve una lista de bloques:
+    // [ ['dispositivo'=>str, 'periodo'=>str|null,
+    //    'filas'=>[['fecha'=>'Y-m-d','km'=>float,'litros'=>?float,'costo'=>?float], ...]], ... ]
+    $bloques = [];
+    $idx = -1;
+    $col = null;
+
+    $dec = fn($c) => trim(html_entity_decode(strip_tags($c), ENT_QUOTES | ENT_HTML5));
+    $num = static function ($txt): float {
+        $t = preg_replace('/[^\d.]/', '', strip_tags((string) $txt));
+        return $t === '' ? 0.0 : (float) $t;
+    };
+
+    foreach (preg_split('/<\/tr>/i', $html) as $r) {
+        preg_match_all('/<t[dh][^>]*>(.*?)<\/t[dh]>/is', $r, $cm);
+        if (empty($cm[1])) continue;
+        $vals = array_map($dec, $cm[1]);
+
+        // ¿Inicio de bloque de un dispositivo?
+        $pd = array_search('Dispositivo:', $vals, true);
+        if ($pd !== false && isset($vals[$pd + 1])) {
+            $bloques[] = ['dispositivo' => $vals[$pd + 1], 'periodo' => null, 'filas' => []];
+            $idx = count($bloques) - 1;
+            $col = null;
+            continue;
+        }
+        if ($idx < 0) continue;
+
+        // Período del bloque.
+        $pp = array_search('Período:', $vals, true);
+        if ($pp === false) $pp = array_search('Periodo:', $vals, true);
+        if ($pp !== false && isset($vals[$pp + 1])) { $bloques[$idx]['periodo'] = $vals[$pp + 1]; continue; }
+
+        // Encabezado de columnas del bloque.
+        if (in_array('Largo', $vals, true) && in_array('Tiempo', $vals, true)) {
+            $col = [];
+            foreach ($vals as $i => $name) $col[$name] = $i;
+            continue;
+        }
+
+        // Fila de datos (primera celda = fecha). Excluye la fila de total.
+        if ($col !== null && isset($vals[0]) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $vals[0])) {
+            $iL = $col['Largo'] ?? null;
+            if ($iL === null) continue;
+            $iC  = $col['Combustible'] ?? null;
+            $iCo = null;
+            foreach ($col as $name => $i) {
+                if (stripos($name, 'Costo de combustible') !== false) $iCo = $i;
+            }
+            $bloques[$idx]['filas'][] = [
+                'fecha'  => $vals[0],
+                'km'     => isset($vals[$iL]) ? $num($vals[$iL]) : 0.0,
+                'litros' => ($iC  !== null && isset($vals[$iC]))  ? $num($vals[$iC])  : null,
+                'costo'  => ($iCo !== null && isset($vals[$iCo])) ? $num($vals[$iCo]) : null,
+            ];
+        }
+    }
+    return $bloques;
+}
+
+/** Km recorridos según GPS (Monsat) en un período. */
+function flotilla_km_gps_total(int $vid, ?string $desde = null, ?string $hasta = null): float {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) return 0.0;
+        $w = 'vehiculo_id = :v'; $params = ['v' => $vid];
+        if ($desde) { $w .= ' AND fecha >= :d'; $params['d'] = $desde; }
+        if ($hasta) { $w .= ' AND fecha <= :h'; $params['h'] = $hasta; }
+        $r = db_one("SELECT COALESCE(SUM(km),0) km FROM flotilla_km_gps WHERE {$w}", $params);
+        return (float) ($r['km'] ?? 0);
+    } catch (Throwable $e) { return 0.0; }
+}
+
+/**
+ * Avanza el odómetro (km_actual) de un vehículo con el km del GPS.
+ * Ancla en la última lectura REAL (manual/papel) y le suma el km GPS posterior a esa fecha.
+ * Nunca baja el km_actual. Mantiene una sola lectura 'gps' con el estimado vigente
+ * (para que las alertas/antigüedad del odómetro y el mantenimiento por km funcionen).
+ */
+function flotilla_odometro_sync_gps(int $vid): void {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) return;
+        $ult = db_one("SELECT MAX(fecha) f FROM flotilla_km_gps WHERE vehiculo_id = :v", ['v' => $vid]);
+        $ult_fecha = $ult['f'] ?? null;
+        if (!$ult_fecha) return;
+
+        $veh = db_one("SELECT km_actual, km_inicial FROM flotilla_vehiculos WHERE id = :id", ['id' => $vid]);
+        if (!$veh) return;
+        $km_actual = (float) $veh['km_actual'];
+
+        // Ancla: última lectura real del odómetro (no GPS). Si no hay, km_inicial.
+        $ancla = null;
+        $tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+        if ($tiene_odo) {
+            $ancla = db_one(
+                "SELECT km, leido_en FROM flotilla_odometro_historial
+                 WHERE vehiculo_id = :v AND (origen IS NULL OR origen <> 'gps')
+                 ORDER BY leido_en DESC, id DESC LIMIT 1",
+                ['v' => $vid]
+            );
+        }
+        if ($ancla) {
+            $km_ancla    = (float) $ancla['km'];
+            $fecha_ancla = substr((string) $ancla['leido_en'], 0, 10);
+        } else {
+            $km_ancla    = (float) ($veh['km_inicial'] ?? 0);
+            $fecha_ancla = '2000-01-01';
+        }
+
+        $r = db_one(
+            "SELECT COALESCE(SUM(km),0) km FROM flotilla_km_gps WHERE vehiculo_id = :v AND fecha > :d",
+            ['v' => $vid, 'd' => $fecha_ancla]
+        );
+        $nuevo = (int) round($km_ancla + (float) ($r['km'] ?? 0));
+        if ($nuevo <= $km_actual) return; // nunca baja
+
+        db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id", ['km' => $nuevo, 'id' => $vid]);
+        if ($tiene_odo) {
+            db_exec("DELETE FROM flotilla_odometro_historial WHERE vehiculo_id = :v AND origen = 'gps'", ['v' => $vid]);
+            db_exec(
+                "INSERT INTO flotilla_odometro_historial (vehiculo_id, km, km_anterior, origen, notas, leido_en)
+                 VALUES (:v, :km, :ka, 'gps', 'Estimado por GPS (Monsat)', :fecha)",
+                ['v' => $vid, 'km' => $nuevo, 'ka' => (int) $km_actual, 'fecha' => $ult_fecha . ' 12:00:00']
+            );
+        }
+    } catch (Throwable $e) { /* silencioso */ }
+}
+
+/**
+ * Estima el km del ODÓMETRO de un vehículo a una fecha dada, usando el GPS.
+ * Ancla en la lectura real más cercana (antes o después) y suma/resta el km del GPS.
+ * Solo estima si el GPS cubre esa fecha (fecha >= primer dato GPS del vehículo).
+ * Devuelve el km estimado o null si no hay datos suficientes.
+ */
+function flotilla_km_odometro_estimado(int $vid, string $fecha): ?int {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) return null;
+        $min = db_one("SELECT MIN(fecha) f FROM flotilla_km_gps WHERE vehiculo_id = :v", ['v' => $vid]);
+        if (empty($min['f']) || $fecha < $min['f']) return null; // fuera de cobertura GPS
+
+        $tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+
+        // 1) Ancla ANTERIOR o igual: km_ancla + GPS(ancla, fecha].
+        if ($tiene_odo) {
+            $ant = db_one(
+                "SELECT km, leido_en FROM flotilla_odometro_historial
+                 WHERE vehiculo_id=:v AND (origen IS NULL OR origen<>'gps') AND DATE(leido_en) <= :f
+                 ORDER BY leido_en DESC, id DESC LIMIT 1",
+                ['v' => $vid, 'f' => $fecha]
+            );
+            if ($ant) {
+                $r = db_one("SELECT COALESCE(SUM(km),0) km FROM flotilla_km_gps WHERE vehiculo_id=:v AND fecha > :fa AND fecha <= :f",
+                    ['v' => $vid, 'fa' => substr((string) $ant['leido_en'], 0, 10), 'f' => $fecha]);
+                return (int) round((float) $ant['km'] + (float) ($r['km'] ?? 0));
+            }
+            // 2) Ancla POSTERIOR: km_post - GPS(fecha, post].
+            $post = db_one(
+                "SELECT km, leido_en FROM flotilla_odometro_historial
+                 WHERE vehiculo_id=:v AND (origen IS NULL OR origen<>'gps') AND DATE(leido_en) >= :f
+                 ORDER BY leido_en ASC, id ASC LIMIT 1",
+                ['v' => $vid, 'f' => $fecha]
+            );
+            if ($post) {
+                $r = db_one("SELECT COALESCE(SUM(km),0) km FROM flotilla_km_gps WHERE vehiculo_id=:v AND fecha > :f AND fecha <= :fp",
+                    ['v' => $vid, 'f' => $fecha, 'fp' => substr((string) $post['leido_en'], 0, 10)]);
+                $est = (int) round((float) $post['km'] - (float) ($r['km'] ?? 0));
+                return $est > 0 ? $est : null;
+            }
+        }
+        return null; // sin lectura real de referencia
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+/** Última fecha con dato de km GPS de un vehículo (o null). */
+function flotilla_km_gps_ultima_fecha(int $vid): ?string {
+    try {
+        if (!db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) return null;
+        $r = db_one("SELECT MAX(fecha) f FROM flotilla_km_gps WHERE vehiculo_id = :v", ['v' => $vid]);
+        return $r['f'] ?? null;
+    } catch (Throwable $e) { return null; }
+}
+
+/**
+ * Importa el contenido (HTML/XLS) de un reporte Monsat: parsea, mapea por alias,
+ * hace upsert del km diario y avanza el odómetro. Devuelve un resumen.
+ * Reutilizable por la página de importación y por el cron de correo.
+ */
+function flotilla_monsat_importar(string $html): array {
+    $out = ['vehiculos' => 0, 'dias' => 0, 'no_reconocidos' => []];
+    if (!db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) return $out;
+
+    $map = [];
+    foreach (db_all("SELECT id, alias FROM flotilla_vehiculos") as $v) {
+        if (!empty($v['alias'])) $map[flotilla_norm_economico($v['alias'])] = (int) $v['id'];
+    }
+
+    foreach (flotilla_monsat_parse($html) as $blq) {
+        $disp = (string) ($blq['dispositivo'] ?? '');
+        $vid  = $map[flotilla_norm_economico($disp)] ?? null;
+        if (!$vid) {
+            if ($disp !== '') $out['no_reconocidos'][$disp] = ($out['no_reconocidos'][$disp] ?? 0) + count($blq['filas']);
+            continue;
+        }
+        $dias = 0;
+        foreach ($blq['filas'] as $f) {
+            if (empty($f['fecha'])) continue;
+            db_exec(
+                "INSERT INTO flotilla_km_gps (vehiculo_id, fecha, km, litros, costo_comb, fuente)
+                 VALUES (:v, :f, :km, :l, :c, 'monsat')
+                 ON DUPLICATE KEY UPDATE km = VALUES(km), litros = VALUES(litros),
+                    costo_comb = VALUES(costo_comb), actualizado_en = CURRENT_TIMESTAMP",
+                ['v' => $vid, 'f' => $f['fecha'], 'km' => $f['km'], 'l' => $f['litros'], 'c' => $f['costo']]
+            );
+            $dias++;
+        }
+        if ($dias > 0) {
+            flotilla_odometro_sync_gps($vid);
+            $out['vehiculos']++;
+            $out['dias'] += $dias;
+        }
+    }
+    return $out;
+}
+
+/** Extrae los adjuntos (nombre + contenido decodificado) de un correo IMAP. */
+function flotilla_monsat_adjuntos($imap, int $num): array {
+    $adjs = [];
+    $struct = imap_fetchstructure($imap, $num);
+    if (empty($struct->parts)) return $adjs;
+    $walk = function (array $parts, string $prefix) use (&$walk, $imap, $num, &$adjs): void {
+        foreach ($parts as $i => $part) {
+            $partno = $prefix === '' ? (string) ($i + 1) : $prefix . '.' . ($i + 1);
+            $nombre = '';
+            if (!empty($part->ifdparameters)) foreach ($part->dparameters as $pp) if (strtolower($pp->attribute) === 'filename') $nombre = $pp->value;
+            if ($nombre === '' && !empty($part->ifparameters)) foreach ($part->parameters as $pp) if (strtolower($pp->attribute) === 'name') $nombre = $pp->value;
+            if ($nombre !== '') {
+                $data = imap_fetchbody($imap, $num, $partno);
+                $enc = (int) ($part->encoding ?? 0);
+                if ($enc === 3) $data = base64_decode($data);
+                elseif ($enc === 4) $data = quoted_printable_decode($data);
+                $adjs[] = ['nombre' => $nombre, 'contenido' => (string) $data];
+            }
+            if (!empty($part->parts)) $walk($part->parts, $partno);
+        }
+    };
+    $walk($struct->parts, '');
+    return $adjs;
+}
+
+/**
+ * Conecta a una cuenta IMAP de Monsat y procesa sus correos.
+ * $cuenta: fila de flotilla_monsat_cuentas (con password_cifrada).
+ * Si $importar es false, solo prueba la conexión y cuenta correos.
+ * Devuelve ['ok','error','correos','vehiculos','dias','sin_match','encontrados'].
+ */
+function flotilla_monsat_procesar_cuenta(array $cuenta, bool $importar = true): array {
+    require_once __DIR__ . '/vault_helpers.php';
+    $out = ['ok' => false, 'error' => null, 'correos' => 0, 'vehiculos' => 0, 'dias' => 0, 'sin_match' => [], 'encontrados' => 0];
+
+    if (!function_exists('imap_open')) { $out['error'] = 'La extensión IMAP de PHP no está habilitada.'; return $out; }
+
+    $pass = vault_descifrar($cuenta['password_cifrada'] ?? null) ?? '';
+    $host = trim((string) ($cuenta['host'] ?? ''));
+    $port = (int) ($cuenta['port'] ?? 993) ?: 993;
+    $mbox = '{' . $host . ':' . $port . '/imap/ssl}' . (trim((string) ($cuenta['folder'] ?? '')) ?: 'INBOX');
+
+    $imap = @imap_open($mbox, (string) ($cuenta['usuario'] ?? ''), $pass);
+    if (!$imap) { $out['error'] = 'No se pudo conectar: ' . imap_last_error(); return $out; }
+
+    $crit = !empty($cuenta['solo_no_leidos']) ? 'UNSEEN' : 'ALL';
+    if (!empty($cuenta['remitente'])) $crit .= ' FROM "' . str_replace('"', '', (string) $cuenta['remitente']) . '"';
+    $ids = imap_search($imap, $crit) ?: [];
+    $out['encontrados'] = count($ids);
+
+    if ($importar) {
+        foreach ($ids as $num) {
+            $tuvo = false;
+            foreach (flotilla_monsat_adjuntos($imap, (int) $num) as $a) {
+                if (!preg_match('/\.(xls|xlsx|html?|htm)$/i', $a['nombre'])) continue;
+                if (stripos($a['contenido'], '<') === false) continue;
+                $r = flotilla_monsat_importar($a['contenido']);
+                $out['vehiculos'] += $r['vehiculos'];
+                $out['dias'] += $r['dias'];
+                foreach ($r['no_reconocidos'] as $d => $cn) $out['sin_match'][$d] = ($out['sin_match'][$d] ?? 0) + $cn;
+                $tuvo = true;
+            }
+            if ($tuvo) {
+                $out['correos']++;
+                if (!empty($cuenta['marcar_leidos'])) imap_setflag_full($imap, (string) $num, "\\Seen");
+            }
+        }
+    }
+    imap_close($imap);
+    $out['ok'] = true;
+    return $out;
+}
+
+/** Normaliza un económico/alias para comparar ("C-11", "C11", "c 11" -> "C11"). */
+function flotilla_norm_economico(string $s): string {
+    return strtoupper(preg_replace('/[^a-z0-9]/i', '', $s));
+}
+

@@ -450,6 +450,18 @@ $sucursales  = db_all("SELECT id, nombre FROM sucursales WHERE activo=1 ORDER BY
 
 $rendimiento_prom = flotilla_rendimiento_promedio($id);
 $gasto_mes   = flotilla_gasto_total($id, date('Y-m-01'), date('Y-m-t'));
+$km_gps_anio = flotilla_km_gps_total($id, date('Y-01-01'), date('Y-m-d'));
+$km_gps_ult  = flotilla_km_gps_ultima_fecha($id);
+$km_mensual = [];
+if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+    $km_mensual = db_all(
+        "SELECT DATE_FORMAT(fecha,'%Y-%m') mes, SUM(km) km
+         FROM flotilla_km_gps WHERE vehiculo_id = :v AND fecha >= :desde
+         GROUP BY mes ORDER BY mes",
+        ['v' => $id, 'desde' => date('Y-m-01', strtotime('-11 months'))]
+    );
+}
+$max_km_mes = !empty($km_mensual) ? max(array_column($km_mensual, 'km')) : 1;
 $gasto_anio  = flotilla_gasto_total($id, date('Y-01-01'), date('Y-12-31'));
 
 $alias_o_marca = $vehiculo['alias'] ?: "{$vehiculo['marca']} {$vehiculo['modelo']}";
@@ -560,6 +572,12 @@ require_once __DIR__ . '/config/header.php';
                     <div class="font-display text-xl font-extrabold text-zinc-900">$<?= number_format($gasto_anio, 0) ?></div>
                     <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Gasto año</div>
                 </div>
+                <?php if (($km_gps_anio ?? 0) > 0): ?>
+                <div class="bg-zinc-50 rounded-lg px-4 py-2" title="Kilómetros recorridos este año según el GPS (Monsat)<?= $km_gps_ult ? ' · último dato: ' . e(fmt_fecha($km_gps_ult, false)) : '' ?>">
+                    <div class="font-display text-xl font-extrabold text-zinc-900"><?= number_format($km_gps_anio) ?></div>
+                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Km año (GPS)</div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -673,6 +691,28 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php endif; ?>
     </div>
+
+    <?php if (!empty($km_mensual)): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 p-5">
+        <h3 class="font-display font-bold text-zinc-900 text-sm uppercase tracking-wide flex items-center gap-2 mb-4">
+            <i data-lucide="route" class="w-4 h-4 text-bacal-700"></i> Recorrido mensual (GPS)
+            <span class="ml-auto text-[10px] font-normal normal-case text-zinc-400">últimos 12 meses</span>
+        </h3>
+        <div class="space-y-2">
+            <?php foreach ($km_mensual as $m):
+                $kmm  = (float) $m['km'];
+                $pctm = $max_km_mes > 0 ? ($kmm / $max_km_mes) * 100 : 0;
+                $pm   = explode('-', $m['mes']); $lblm = ($pm[1] ?? '') . '/' . ($pm[0] ?? '');
+            ?>
+            <div class="flex items-center gap-3">
+                <div class="w-14 text-[11px] font-mono text-zinc-500 shrink-0"><?= e($lblm) ?></div>
+                <div class="flex-1 bg-zinc-100 rounded-full h-2"><div class="h-2 rounded-full bg-bacal-600" style="width:<?= round($pctm) ?>%"></div></div>
+                <div class="w-20 text-right text-xs font-semibold text-zinc-800 shrink-0"><?= number_format($kmm) ?> km</div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="bg-white rounded-xl border border-zinc-200 p-5 space-y-3">

@@ -100,6 +100,21 @@ try {
     }
 } catch (Throwable $e) { $km_odometro_periodo = 0; }
 
+// 2c. Km recorridos según GPS (Monsat) — fuente PREFERIDA (dato real por día).
+$km_gps_periodo = 0;
+try {
+    if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+        $km_g = db_one(
+            "SELECT COALESCE(SUM(g.km),0) km
+             FROM flotilla_km_gps g
+             INNER JOIN flotilla_vehiculos v ON g.vehiculo_id = v.id
+             WHERE g.fecha BETWEEN :desde AND :hasta $suc_filter_gastos",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
+        $km_gps_periodo = (int) round((float) ($km_g['km'] ?? 0));
+    }
+} catch (Throwable $e) { $km_gps_periodo = 0; }
+
 // 3. KPIs mantenimiento
 $kpi_mant = db_one(
     "SELECT
@@ -147,15 +162,28 @@ $por_vehiculo = db_all(
 // 6. Rendimiento combustible por vehículo.
 // Los km recorridos se toman del ODÓMETRO (MAX-MIN en el período) porque las cargas
 // importadas no traen km por carga. Rendimiento estimado = km del odómetro / litros del período.
+$tiene_gps = (bool) db_one("SHOW TABLES LIKE 'flotilla_km_gps'");
 $tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+$join_gps  = $tiene_gps
+    ? "LEFT JOIN (SELECT vehiculo_id, SUM(km) km_gps
+                  FROM flotilla_km_gps
+                  WHERE fecha BETWEEN :gd AND :gh
+                  GROUP BY vehiculo_id) g ON g.vehiculo_id = v.id"
+    : "";
 $join_odo  = $tiene_odo
     ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
                   FROM flotilla_odometro_historial
                   WHERE DATE(leido_en) BETWEEN :desde2 AND :hasta2
                   GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
     : "";
-$km_expr   = $tiene_odo ? "COALESCE(o.km_periodo, 0)" : "COALESCE(SUM(c.km_recorridos), 0)";
+$_km_parts = [];
+if ($tiene_gps) $_km_parts[] = "MAX(g.km_gps)";
+if ($tiene_odo) $_km_parts[] = "MAX(o.km_periodo)";
+$_km_parts[] = "SUM(c.km_recorridos)";
+$_km_parts[] = "0";
+$km_expr   = "COALESCE(" . implode(", ", $_km_parts) . ")";
 $params_r  = ['desde' => $desde, 'hasta' => $hasta];
+if ($tiene_gps) { $params_r['gd'] = $desde; $params_r['gh'] = $hasta; }
 if ($tiene_odo) { $params_r['desde2'] = $desde; $params_r['hasta2'] = $hasta; }
 $rendimiento = db_all(
     "SELECT v.id, v.placas, v.alias, v.marca, v.modelo,
@@ -168,6 +196,7 @@ $rendimiento = db_all(
      FROM flotilla_vehiculos v
      INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id
         AND DATE(c.fecha) BETWEEN :desde AND :hasta
+     $join_gps
      $join_odo
      WHERE 1 $suc_filter_gastos
      GROUP BY v.id
@@ -190,6 +219,60 @@ $mantenimientos = db_all(
 
 // 7b. Proveedores de flotilla más caros (gasto de mantenimiento por proveedor)
 $prov_flota = flotilla_gasto_proveedores($desde, $hasta, $suc_filter_gastos, 15);
+
+// 7c. Uso de la flota: km recorridos (GPS) por vehículo + costo integral por km.
+$km_por_veh = [];
+if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+    $km_por_veh = db_all(
+        "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
+                COALESCE(SUM(g.km),0) km,
+                (SELECT COALESCE(SUM(monto),0) FROM flotilla_gastos gx
+                 WHERE gx.vehiculo_id = v.id AND gx.fecha BETWEEN :d2 AND :h2) gasto_total
+         FROM flotilla_vehiculos v
+         INNER JOIN flotilla_km_gps g ON g.vehiculo_id = v.id AND g.fecha BETWEEN :desde AND :hasta
+         WHERE v.activo = 1 $suc_filter_gastos
+         GROUP BY v.id
+         HAVING km > 0
+         ORDER BY km DESC",
+        ['desde' => $desde, 'hasta' => $hasta, 'd2' => $desde, 'h2' => $hasta]
+    );
+}
+$max_km_veh = !empty($km_por_veh) ? max(array_column($km_por_veh, 'km')) : 1;
+
+// 7d. Anomalías GPS / combustible por vehículo (activos).
+$anomalias = [];
+if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+    $hoy_a = date('Y-m-d');
+    $rows_a = db_all(
+        "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
+            (SELECT COALESCE(SUM(k.km),0) FROM flotilla_km_gps k WHERE k.vehiculo_id=v.id AND k.fecha BETWEEN :d AND :h) km,
+            (SELECT MAX(k.fecha) FROM flotilla_km_gps k WHERE k.vehiculo_id=v.id) ult_gps,
+            (SELECT COALESCE(SUM(c.litros),0) FROM flotilla_combustible c WHERE c.vehiculo_id=v.id AND DATE(c.fecha) BETWEEN :d2 AND :h2) litros
+         FROM flotilla_vehiculos v
+         WHERE v.activo=1 $suc_filter_gastos
+         ORDER BY v.alias",
+        ['d' => $desde, 'h' => $hasta, 'd2' => $desde, 'h2' => $hasta]
+    );
+    foreach ($rows_a as $ra) {
+        $km = (float) $ra['km']; $lt = (float) $ra['litros']; $ug = $ra['ult_gps'];
+        $dsg = $ug ? (int) floor((strtotime($hoy_a) - strtotime($ug)) / 86400) : null;
+        $flags = [];
+        if ($ug === null) {
+            $flags[] = ['zinc', 'Sin datos de GPS', 'Nunca ha reportado kilometraje por GPS.'];
+        } elseif ($dsg !== null && $dsg > 7) {
+            $flags[] = ['red', 'GPS sin reportar', "Sin datos de GPS hace {$dsg} días (última: " . fmt_fecha($ug, false) . ")."];
+        }
+        if ($km > 300 && $lt <= 0) {
+            $flags[] = ['amber', 'Km sin combustible', 'Recorrió ' . number_format($km) . ' km pero no hay cargas de combustible en el período. ¿Falta registrar cargas?'];
+        }
+        if ($lt > 5 && $km <= 0) {
+            $flags[] = ['amber', 'Combustible sin km', 'Cargó ' . number_format($lt, 0) . ' L pero el GPS no registra km. ¿GPS caído o unidad sin moverse?'];
+        }
+        foreach ($flags as $fl) {
+            $anomalias[] = ['veh' => $ra, 'color' => $fl[0], 'titulo' => $fl[1], 'detalle' => $fl[2]];
+        }
+    }
+}
 
 // 8. Tendencia mensual (mes a mes entre desde y hasta)
 $tendencia = db_all(
@@ -326,17 +409,18 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <?php
         $litros  = (float)($kpi_comb['total_litros'] ?? 0);
         $kml     = (float)($kpi_comb['avg_kml'] ?? 0);
-        $kms_rec = (int)($kpi_comb['km_recorridos'] ?? 0);
-        // Si las cargas no traen km recorridos, se estima con el odómetro del período.
-        $km_estimado = false;
-        if ($kms_rec <= 0 && $km_odometro_periodo > 0) { $kms_rec = $km_odometro_periodo; $km_estimado = true; }
-        if ($kml <= 0 && $kms_rec > 0 && $litros > 0)  { $kml = $kms_rec / $litros; }
+        $kms_rec = (int)($kpi_comb['km_recorridos'] ?? 0);   // km por carga (Xiga no lo trae)
+        // Fuente de km recorridos: 1) GPS (Monsat, real), 2) odómetro (estimado), 3) por carga.
+        $km_fuente = '';
+        if ($kms_rec <= 0 && $km_gps_periodo > 0)            { $kms_rec = $km_gps_periodo;       $km_fuente = 'GPS'; }
+        elseif ($kms_rec <= 0 && $km_odometro_periodo > 0)  { $kms_rec = $km_odometro_periodo;  $km_fuente = 'est.'; }
+        if ($kml <= 0 && $kms_rec > 0 && $litros > 0)       { $kml = $kms_rec / $litros; }
         $costo_km = ($kms_rec > 0 && $gc > 0) ? $gc / $kms_rec : 0;
         $kpis2 = [
             ['Litros cargados',  number_format($litros, 1) . ' L',            'droplets',      'sky'],
-            ['Rend. promedio' . ($km_estimado ? ' (est.)' : ''),   ($kml > 0 ? number_format($kml, 2) : '0.00') . ' km/L',  'gauge', 'emerald'],
+            ['Rend. promedio' . ($km_fuente ? " ({$km_fuente})" : ''),   ($kml > 0 ? number_format($kml, 2) : '0.00') . ' km/L',  'gauge', 'emerald'],
             ['Servicios mant.',  (int)($kpi_mant['total_servicios'] ?? 0),    'clipboard-list','violet'],
-            ['Costo por km' . ($km_estimado ? ' (est.)' : ''),     $costo_km > 0 ? '$' . number_format($costo_km, 3) : '—', 'route', 'orange'],
+            ['Costo por km' . ($km_fuente ? " ({$km_fuente})" : ''),     $costo_km > 0 ? '$' . number_format($costo_km, 3) : '—', 'route', 'orange'],
         ];
         foreach ($kpis2 as [$label, $val, $icon, $color]):
         ?>
@@ -533,7 +617,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="bg-white rounded-xl border border-zinc-200 p-5">
             <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
                 <i data-lucide="fuel" class="w-4 h-4 text-bacal-700"></i>
-                Rendimiento combustible (km/L) <span class="text-[10px] font-normal text-zinc-400 normal-case">· estimado por odómetro</span>
+                Rendimiento combustible (km/L) <span class="text-[10px] font-normal text-zinc-400 normal-case">· km reales del GPS (Monsat)</span>
             </h3>
             <?php $max_rend = max(array_column($rendimiento, 'rend_prom') ?: [1]); ?>
             <div class="space-y-3">
@@ -638,6 +722,92 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                     <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Uso de la flota (km GPS) -->
+    <?php if (!empty($km_por_veh)): ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
+            <i data-lucide="route" class="w-5 h-5 text-bacal-700"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Uso de la flota · km recorridos</h3>
+            <span class="ml-auto text-[11px] text-zinc-400">Según GPS (Monsat) · el costo/km incluye todo el gasto (combustible + mantenimiento + …)</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-zinc-50 border-b border-zinc-200">
+                    <tr>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Vehículo</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Km recorridos</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Gasto total</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Costo / km</th>
+                        <th class="px-4 py-2.5 w-40 hidden lg:table-cell"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    <?php foreach ($km_por_veh as $idx => $kv):
+                        $kmv = (float) $kv['km'];
+                        $gt  = (float) $kv['gasto_total'];
+                        $cpk = $kmv > 0 ? $gt / $kmv : 0;
+                        $pct = $max_km_veh > 0 ? ($kmv / $max_km_veh) * 100 : 0;
+                    ?>
+                    <tr class="hover:bg-zinc-50">
+                        <td class="px-4 py-2.5 text-zinc-400 font-mono text-xs"><?= $idx + 1 ?></td>
+                        <td class="px-4 py-2.5">
+                            <a href="<?= url('flotilla_vehiculo_ver.php?id=' . (int) $kv['id']) ?>" class="font-semibold text-zinc-900 hover:text-bacal-700">
+                                <?= $kv['alias'] ? e($kv['alias']) . ' · ' : '' ?><?= e($kv['marca']) ?> <?= e($kv['modelo']) ?>
+                            </a>
+                            <div class="text-[10px] font-mono text-zinc-400"><?= e($kv['placas']) ?></div>
+                        </td>
+                        <td class="px-4 py-2.5 text-right font-semibold text-zinc-900"><?= number_format($kmv) ?> km</td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= $gt > 0 ? '$' . number_format($gt, 0) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700"><?= $cpk > 0 ? '$' . number_format($cpk, 2) : '—' ?></td>
+                        <td class="px-4 py-2.5 hidden lg:table-cell">
+                            <div class="w-full bg-zinc-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-bacal-600" style="width:<?= round($pct) ?>%"></div></div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Anomalías GPS / combustible -->
+    <?php if (!empty($anomalias)):
+        $cmap = [
+            'red'   => ['bg-red-500',   'text-red-700',   'bg-red-50'],
+            'amber' => ['bg-amber-500', 'text-amber-700', 'bg-amber-50'],
+            'zinc'  => ['bg-zinc-400',  'text-zinc-600',  'bg-zinc-50'],
+        ];
+    ?>
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Anomalías detectadas</h3>
+            <span class="ml-auto text-[11px] text-zinc-400">GPS y combustible · <?= count($anomalias) ?></span>
+        </div>
+        <div class="divide-y divide-zinc-100">
+            <?php foreach ($anomalias as $an):
+                $cc = $cmap[$an['color']] ?? $cmap['zinc'];
+                $rv = $an['veh'];
+            ?>
+            <div class="px-5 py-3 flex items-start gap-3">
+                <span class="mt-1.5 w-2 h-2 rounded-full <?= $cc[0] ?> shrink-0"></span>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm flex items-center gap-2 flex-wrap">
+                        <a href="<?= url('flotilla_vehiculo_ver.php?id=' . (int) $rv['id']) ?>" class="font-semibold text-zinc-900 hover:text-bacal-700">
+                            <?= $rv['alias'] ? e($rv['alias']) . ' · ' : '' ?><?= e($rv['marca']) ?> <?= e($rv['modelo']) ?>
+                        </a>
+                        <span class="text-[10px] font-mono text-zinc-400"><?= e($rv['placas']) ?></span>
+                        <span class="text-xs font-bold <?= $cc[1] ?>"><?= e($an['titulo']) ?></span>
+                    </div>
+                    <div class="text-xs text-zinc-500 mt-0.5"><?= e($an['detalle']) ?></div>
+                </div>
+            </div>
+            <?php endforeach; ?>
         </div>
     </div>
     <?php endif; ?>
