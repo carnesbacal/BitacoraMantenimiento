@@ -14,11 +14,11 @@ requerir_login();
 $u = usuario_actual();
 
 $hoy   = date('Y-m-d');
-$desde = trim((string) input('desde', date('Y-01-01')));
+$desde = trim((string) input('desde', date('Y-m-01')));
 $hasta = trim((string) input('hasta', $hoy));
 $f_suc = (int) input('sucursal_id', 0);
 
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-01-01');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-01');
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta))  $hasta = $hoy;
 if ($desde > $hasta) [$desde, $hasta] = [$hasta, $desde];
 
@@ -106,6 +106,37 @@ $documentos = db_all(
      ORDER BY FIELD(d.estado,'vencido','por_vencer','vigente','cancelado'), d.fecha_vence"
 );
 
+// 6. Rendimiento y km por unidad (odómetro manual, sin GPS).
+$tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+$join_odo  = $tiene_odo
+    ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
+                  FROM flotilla_odometro_historial
+                  WHERE DATE(leido_en) BETWEEN :d2 AND :h2
+                    AND (origen IS NULL OR origen <> 'gps')
+                  GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
+    : "";
+$km_expr  = $tiene_odo ? "COALESCE(MAX(o.km_periodo), SUM(c.km_recorridos), 0)"
+                       : "COALESCE(SUM(c.km_recorridos), 0)";
+$params_r = ['desde' => $desde, 'hasta' => $hasta];
+if ($tiene_odo) { $params_r['d2'] = $desde; $params_r['h2'] = $hasta; }
+$rendimiento = db_all(
+    "SELECT v.placas, COALESCE(v.alias,'') alias, CONCAT(v.marca,' ',v.modelo) modelo,
+            COUNT(c.id) cargas, ROUND(SUM(c.litros),1) litros,
+            COALESCE(SUM(c.litros * c.precio_litro),0) costo_comb,
+            $km_expr km_rec
+     FROM flotilla_vehiculos v
+     INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id AND DATE(c.fecha) BETWEEN :desde AND :hasta
+     $join_odo
+     WHERE 1 $suf
+     GROUP BY v.id
+     HAVING cargas >= 1
+     ORDER BY km_rec DESC",
+    $params_r
+);
+$flota_km    = array_sum(array_map(fn($r) => (int) $r['km_rec'], $rendimiento));
+$flota_litros= array_sum(array_map(fn($r) => (float) $r['litros'], $rendimiento));
+$flota_comb  = array_sum(array_map(fn($r) => (float) $r['costo_comb'], $rendimiento));
+
 // ── Construir XLSX ───────────────────────────────────────────────────────────
 
 $xlsx = new XlsxWriter();
@@ -134,6 +165,9 @@ $xlsx->addRow(['Litros de combustible cargados',    round($total_litros, 2)]);
 $xlsx->addRow(['Cargas de combustible registradas', count($combustible)]);
 $xlsx->addRow(['Servicios de mantenimiento',        count($mantenimientos)]);
 $xlsx->addRow(['Vehículos con actividad',           count($por_vehiculo)]);
+$xlsx->addRow(['Km recorridos (capturas manuales)',  $flota_km]);
+$xlsx->addRow(['Rendimiento de flota (km/L)',        ($flota_km > 0 && $flota_litros > 0) ? round($flota_km / $flota_litros, 2) : '']);
+$xlsx->addRow(['Costo por km (combustible)',         $flota_km > 0 ? round($flota_comb / $flota_km, 2) : '']);
 $xlsx->addBlankRow();
 
 // Resumen por categoría
@@ -170,6 +204,38 @@ foreach ($por_vehiculo as $vg) {
 }
 $xlsx->addBlankRow();
 $xlsx->addHeaderRow(['', '', '', 'TOTALES', array_sum(array_column($por_vehiculo, 'gasto_total'))], 1);
+
+// ── Hoja: Rendimiento por unidad ─────────────────────────────────────────────
+$xlsx->addSheet('Rendimiento x Unidad');
+$xlsx->addHeaderRow(['RENDIMIENTO Y KILOMETRAJE POR UNIDAD'], 5);
+$xlsx->addRow([$periodo_label]);
+$xlsx->addRow(['Km recorridos = odómetro (máx - mín) capturado a mano en el período · sin GPS']);
+$xlsx->addBlankRow();
+$xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Cargas', 'Litros', 'Km recorridos', 'Km/L', '$/L prom', 'Costo comb.', 'Costo/km'], 1);
+$tk = 0; $tl = 0.0; $tc = 0.0;
+foreach ($rendimiento as $r) {
+    $km  = (int) $r['km_rec'];
+    $lit = (float) $r['litros'];
+    $cc  = (float) $r['costo_comb'];
+    $tk += $km; $tl += $lit; $tc += $cc;
+    $xlsx->addRow([
+        $r['placas'], $r['alias'], $r['modelo'],
+        (int) $r['cargas'], $lit,
+        $km > 0 ? $km : '',
+        ($km > 0 && $lit > 0) ? round($km / $lit, 2) : '',
+        $lit > 0 ? round($cc / $lit, 2) : '',
+        $cc,
+        $km > 0 ? round($cc / $km, 2) : '',
+    ]);
+}
+$xlsx->addBlankRow();
+$xlsx->addRow([
+    '', '', 'TOTALES / FLOTA', '', round($tl, 1),
+    $tk > 0 ? $tk : '',
+    ($tk > 0 && $tl > 0) ? round($tk / $tl, 2) : '',
+    '', round($tc, 2),
+    $tk > 0 ? round($tc / $tk, 2) : '',
+]);
 
 // ── Hoja 3: Gastos detallados ────────────────────────────────────────────────
 $xlsx->addSheet('Gastos');

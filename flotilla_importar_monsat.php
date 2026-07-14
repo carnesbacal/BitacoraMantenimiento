@@ -89,7 +89,6 @@ if (es_post() && (string) input('op') === 'importar') {
                     if ($hasta === null || $f['fecha'] > $hasta) $hasta = $f['fecha'];
                 }
                 if ($dias === 0) continue;
-                flotilla_odometro_sync_gps((int) $veh['id']); // avanza el odómetro con el GPS
                 $dias_totales += $dias;
                 $resultados[] = [
                     'dispositivo' => $disp,

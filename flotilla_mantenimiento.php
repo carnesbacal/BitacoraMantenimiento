@@ -103,8 +103,12 @@ if (es_post() && $puede_gestionar) {
                     $mant_id = db_last_id();
 
                     if ($km_odo) {
+                        $va_km = db_one("SELECT km_actual FROM flotilla_vehiculos WHERE id = :id", ['id' => $vid]);
                         db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
                             ['km' => $km_odo, 'id' => $vid, 'km2' => $km_odo]);
+                        if ($va_km && $km_odo > (int) $va_km['km_actual']) {
+                            flotilla_odometro_registrar($vid, $km_odo, 'mantenimiento', (int) $va_km['km_actual'], $u['id']);
+                        }
                     }
 
                     // Estado del vehículo: abierto -> En taller; cerrado -> Activo

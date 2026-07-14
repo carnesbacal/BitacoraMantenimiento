@@ -14,7 +14,7 @@ $u = usuario_actual();
 
 // ── Filtros de período ──────────────────────────────────────────────────────
 $hoy       = date('Y-m-d');
-$default_desde = date('Y-01-01');
+$default_desde = date('Y-m-01');  // por defecto: mes en curso
 $default_hasta = date('Y-12-31');
 
 $desde  = trim((string) input('desde', $default_desde));
@@ -91,7 +91,8 @@ try {
                 SELECT h.vehiculo_id, MAX(h.km) - MIN(h.km) km_periodo
                 FROM flotilla_odometro_historial h
                 INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
-                WHERE DATE(h.leido_en) BETWEEN :desde AND :hasta $suc_filter_gastos
+                WHERE DATE(h.leido_en) BETWEEN :desde AND :hasta
+                  AND (h.origen IS NULL OR h.origen <> 'gps') $suc_filter_gastos
                 GROUP BY h.vehiculo_id
              ) t",
             ['desde' => $desde, 'hasta' => $hasta]
@@ -99,21 +100,6 @@ try {
         $km_odometro_periodo = (int) ($km_odo['km'] ?? 0);
     }
 } catch (Throwable $e) { $km_odometro_periodo = 0; }
-
-// 2c. Km recorridos según GPS (Monsat) — fuente PREFERIDA (dato real por día).
-$km_gps_periodo = 0;
-try {
-    if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
-        $km_g = db_one(
-            "SELECT COALESCE(SUM(g.km),0) km
-             FROM flotilla_km_gps g
-             INNER JOIN flotilla_vehiculos v ON g.vehiculo_id = v.id
-             WHERE g.fecha BETWEEN :desde AND :hasta $suc_filter_gastos",
-            ['desde' => $desde, 'hasta' => $hasta]
-        );
-        $km_gps_periodo = (int) round((float) ($km_g['km'] ?? 0));
-    }
-} catch (Throwable $e) { $km_gps_periodo = 0; }
 
 // 3. KPIs mantenimiento
 $kpi_mant = db_one(
@@ -162,28 +148,21 @@ $por_vehiculo = db_all(
 // 6. Rendimiento combustible por vehículo.
 // Los km recorridos se toman del ODÓMETRO (MAX-MIN en el período) porque las cargas
 // importadas no traen km por carga. Rendimiento estimado = km del odómetro / litros del período.
-$tiene_gps = (bool) db_one("SHOW TABLES LIKE 'flotilla_km_gps'");
+// Km recorridos SOLO de capturas manuales: odómetro (lecturas manuales/papel/Xiga) o km por carga.
 $tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
-$join_gps  = $tiene_gps
-    ? "LEFT JOIN (SELECT vehiculo_id, SUM(km) km_gps
-                  FROM flotilla_km_gps
-                  WHERE fecha BETWEEN :gd AND :gh
-                  GROUP BY vehiculo_id) g ON g.vehiculo_id = v.id"
-    : "";
 $join_odo  = $tiene_odo
     ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
                   FROM flotilla_odometro_historial
                   WHERE DATE(leido_en) BETWEEN :desde2 AND :hasta2
+                    AND (origen IS NULL OR origen <> 'gps')
                   GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
     : "";
 $_km_parts = [];
-if ($tiene_gps) $_km_parts[] = "MAX(g.km_gps)";
 if ($tiene_odo) $_km_parts[] = "MAX(o.km_periodo)";
 $_km_parts[] = "SUM(c.km_recorridos)";
 $_km_parts[] = "0";
 $km_expr   = "COALESCE(" . implode(", ", $_km_parts) . ")";
 $params_r  = ['desde' => $desde, 'hasta' => $hasta];
-if ($tiene_gps) { $params_r['gd'] = $desde; $params_r['gh'] = $hasta; }
 if ($tiene_odo) { $params_r['desde2'] = $desde; $params_r['hasta2'] = $hasta; }
 $rendimiento = db_all(
     "SELECT v.id, v.placas, v.alias, v.marca, v.modelo,
@@ -196,7 +175,6 @@ $rendimiento = db_all(
      FROM flotilla_vehiculos v
      INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id
         AND DATE(c.fecha) BETWEEN :desde AND :hasta
-     $join_gps
      $join_odo
      WHERE 1 $suc_filter_gastos
      GROUP BY v.id
@@ -204,6 +182,18 @@ $rendimiento = db_all(
      ORDER BY rend_prom DESC",
     $params_r
 );
+
+// Métricas derivadas por unidad (costo/km y $/L) + total de km manual del periodo.
+$km_total_manual = 0;
+foreach ($rendimiento as &$rv) {
+    $rv['km_recorridos']     = (int) $rv['km_recorridos'];
+    $rv['total_litros']      = (float) $rv['total_litros'];
+    $rv['costo_comb']        = (float) $rv['costo_comb'];
+    $rv['costo_km']          = ($rv['km_recorridos'] > 0) ? round($rv['costo_comb'] / $rv['km_recorridos'], 2) : 0;
+    $rv['precio_litro_prom'] = ($rv['total_litros'] > 0) ? round($rv['costo_comb'] / $rv['total_litros'], 2) : 0;
+    $km_total_manual        += $rv['km_recorridos'];
+}
+unset($rv);
 
 // 7. Mantenimientos del período
 $mantenimientos = db_all(
@@ -220,16 +210,18 @@ $mantenimientos = db_all(
 // 7b. Proveedores de flotilla más caros (gasto de mantenimiento por proveedor)
 $prov_flota = flotilla_gasto_proveedores($desde, $hasta, $suc_filter_gastos, 15);
 
-// 7c. Uso de la flota: km recorridos (GPS) por vehículo + costo integral por km.
+// 7c. Uso de la flota: km recorridos por vehículo (ODÓMETRO manual) + costo integral por km.
 $km_por_veh = [];
-if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
+if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
     $km_por_veh = db_all(
         "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
-                COALESCE(SUM(g.km),0) km,
+                (MAX(h.km) - MIN(h.km)) km,
                 (SELECT COALESCE(SUM(monto),0) FROM flotilla_gastos gx
                  WHERE gx.vehiculo_id = v.id AND gx.fecha BETWEEN :d2 AND :h2) gasto_total
          FROM flotilla_vehiculos v
-         INNER JOIN flotilla_km_gps g ON g.vehiculo_id = v.id AND g.fecha BETWEEN :desde AND :hasta
+         INNER JOIN flotilla_odometro_historial h ON h.vehiculo_id = v.id
+            AND DATE(h.leido_en) BETWEEN :desde AND :hasta
+            AND (h.origen IS NULL OR h.origen <> 'gps')
          WHERE v.activo = 1 $suc_filter_gastos
          GROUP BY v.id
          HAVING km > 0
@@ -408,19 +400,20 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <?php
         $litros  = (float)($kpi_comb['total_litros'] ?? 0);
-        $kml     = (float)($kpi_comb['avg_kml'] ?? 0);
-        $kms_rec = (int)($kpi_comb['km_recorridos'] ?? 0);   // km por carga (Xiga no lo trae)
-        // Fuente de km recorridos: 1) GPS (Monsat, real), 2) odómetro (estimado), 3) por carga.
-        $km_fuente = '';
-        if ($kms_rec <= 0 && $km_gps_periodo > 0)            { $kms_rec = $km_gps_periodo;       $km_fuente = 'GPS'; }
-        elseif ($kms_rec <= 0 && $km_odometro_periodo > 0)  { $kms_rec = $km_odometro_periodo;  $km_fuente = 'est.'; }
-        if ($kml <= 0 && $kms_rec > 0 && $litros > 0)       { $kml = $kms_rec / $litros; }
-        $costo_km = ($kms_rec > 0 && $gc > 0) ? $gc / $kms_rec : 0;
+        // Km recorridos del periodo: SOLO capturas manuales (suma por unidad, sin GPS).
+        $kms_rec   = (int) $km_total_manual;
+        $flota_kml = ($litros > 0 && $kms_rec > 0) ? $kms_rec / $litros : 0;
+        // Plausibilidad: si el km/L de la flota es absurdo, faltan capturas de odómetro.
+        $datos_km_incompletos = ($kms_rec <= 0) || ($flota_kml > 0 && ($flota_kml < 0.5 || $flota_kml > 40));
+        $costo_km  = ($kms_rec > 0 && $gc > 0) ? $gc / $kms_rec : 0;
+        $val_km    = $datos_km_incompletos ? '—' : number_format($kms_rec) . ' km';
+        $val_kml   = ($flota_kml > 0 && !$datos_km_incompletos) ? number_format($flota_kml, 2) . ' km/L' : '—';
+        $val_ckm   = ($costo_km > 0 && !$datos_km_incompletos) ? '$' . number_format($costo_km, 2) : '—';
         $kpis2 = [
-            ['Litros cargados',  number_format($litros, 1) . ' L',            'droplets',      'sky'],
-            ['Rend. promedio' . ($km_fuente ? " ({$km_fuente})" : ''),   ($kml > 0 ? number_format($kml, 2) : '0.00') . ' km/L',  'gauge', 'emerald'],
-            ['Servicios mant.',  (int)($kpi_mant['total_servicios'] ?? 0),    'clipboard-list','violet'],
-            ['Costo por km' . ($km_fuente ? " ({$km_fuente})" : ''),     $costo_km > 0 ? '$' . number_format($costo_km, 3) : '—', 'route', 'orange'],
+            ['Litros cargados', number_format($litros, 1) . ' L', 'droplets', 'sky'],
+            ['Km recorridos',   $val_km,  'route',    'indigo'],
+            ['Rend. promedio',  $val_kml, 'gauge',    'emerald'],
+            ['Costo por km',    $val_ckm, 'banknote', 'orange'],
         ];
         foreach ($kpis2 as [$label, $val, $icon, $color]):
         ?>
@@ -433,6 +426,13 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         </div>
         <?php endforeach; ?>
     </div>
+
+    <?php if ($datos_km_incompletos): ?>
+    <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-amber-800">
+        <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5 shrink-0"></i>
+        <span>Los <strong>km recorridos</strong> capturados en este periodo aún son insuficientes o inconsistentes para un <strong>rendimiento</strong> y <strong>costo/km</strong> confiables. Captura el odómetro en cada carga de combustible; estos valores se afinan solos conforme haya más lecturas.</span>
+    </div>
+    <?php endif; ?>
 
     <!-- Alertas activas -->
     <?php $hay_alertas = ($docs_vencidos + $docs_por_vencer + (int)($multas_pend['c'] ?? 0) + $siniestros_act + $mant_vencidos) > 0; ?>
@@ -609,51 +609,82 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
     </div>
     <?php endif; ?>
 
-    <!-- Rendimiento combustible + Top mantenimientos -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-        <!-- Rendimiento km/L -->
-        <?php if (!empty($rendimiento)): ?>
-        <div class="bg-white rounded-xl border border-zinc-200 p-5">
-            <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
-                <i data-lucide="fuel" class="w-4 h-4 text-bacal-700"></i>
-                Rendimiento combustible (km/L) <span class="text-[10px] font-normal text-zinc-400 normal-case">· km reales del GPS (Monsat)</span>
-            </h3>
-            <?php $max_rend = max(array_column($rendimiento, 'rend_prom') ?: [1]); ?>
-            <div class="space-y-3">
-            <?php foreach ($rendimiento as $rv):
-                $r     = (float)$rv['rend_prom'];
-                $pct_r = $max_rend > 0 ? ($r / $max_rend) * 100 : 0;
-                $color_rend = $r >= 12 ? '#059669' : ($r >= 8 ? '#d97706' : '#dc2626');
-            ?>
-            <div>
-                <div class="flex items-center justify-between text-xs mb-1">
-                    <a href="<?= url("flotilla_vehiculo_ver.php?id={$rv['id']}") ?>"
-                       class="font-medium text-zinc-700 hover:underline truncate max-w-[180px]">
-                        <?= e($rv['alias'] ?: "{$rv['marca']} {$rv['modelo']}") ?>
-                        <span class="font-mono text-zinc-400 ml-1"><?= e($rv['placas']) ?></span>
-                    </a>
-                    <span class="font-bold ml-2 shrink-0" style="color:<?= $color_rend ?>">
-                        <?= number_format($r, 2) ?> km/L
-                    </span>
-                </div>
-                <div class="w-full bg-zinc-100 rounded-full h-2">
-                    <div class="h-2 rounded-full" style="width:<?= $pct_r ?>%;background:<?= $color_rend ?>"></div>
-                </div>
-                <div class="text-[10px] text-zinc-400 mt-0.5">
-                    <?= $rv['cargas'] ?> cargas · <?= number_format($rv['total_litros'], 1) ?> L ·
-                    <?= number_format($rv['km_recorridos']) ?> km recorridos
-                </div>
-            </div>
-            <?php endforeach; ?>
-            </div>
-            <div class="flex gap-3 mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-500">
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block"></span> ≥12 km/L</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block"></span> 8–12</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-red-500 inline-block"></span> &lt;8</span>
-            </div>
+    <!-- Rendimiento y kilometraje por unidad -->
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2 flex-wrap">
+            <i data-lucide="gauge" class="w-5 h-5 text-bacal-700"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Rendimiento y kilometraje por unidad</h3>
+            <span class="text-xs text-zinc-500">(<?= count($rendimiento) ?>)</span>
+            <span class="ml-auto text-[11px] text-zinc-400">Km del odómetro · solo capturas manuales (sin GPS) · <?= e($label_periodo) ?></span>
+        </div>
+        <?php if (empty($rendimiento)): ?>
+        <div class="px-5 py-10 text-center text-sm text-zinc-500">Sin cargas de combustible en el periodo seleccionado.</div>
+        <?php else: ?>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm js-tabla-orden">
+                <thead class="bg-zinc-50 border-b border-zinc-200">
+                    <tr>
+                        <th class="px-4 py-2.5 text-left  text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Unidad</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Cargas</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Litros</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Km recorridos</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Km/L</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider hidden md:table-cell" data-orden-tipo="num">$/L prom</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider hidden md:table-cell" data-orden-tipo="num">Costo comb.</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Costo/km</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    <?php
+                    $t_cargas = 0; $t_litros = 0.0; $t_km = 0; $t_costo = 0.0;
+                    foreach ($rendimiento as $rv):
+                        $t_cargas += (int) $rv['cargas'];
+                        $t_litros += (float) $rv['total_litros'];
+                        $t_km     += (int) $rv['km_recorridos'];
+                        $t_costo  += (float) $rv['costo_comb'];
+                        $r  = (float) $rv['rend_prom'];
+                        $rc = $r >= 12 ? 'text-emerald-600' : ($r >= 8 ? 'text-amber-600' : ($r > 0 ? 'text-red-600' : 'text-zinc-400'));
+                        $km_ok = (int) $rv['km_recorridos'] > 0;
+                    ?>
+                    <tr class="hover:bg-zinc-50">
+                        <td class="px-4 py-2.5">
+                            <a href="<?= url("flotilla_vehiculo_ver.php?id={$rv['id']}") ?>" class="font-semibold text-zinc-900 hover:underline">
+                                <?= e($rv['alias'] ?: "{$rv['marca']} {$rv['modelo']}") ?>
+                            </a>
+                            <div class="text-[11px] text-zinc-400 font-mono"><?= e($rv['placas']) ?></div>
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-zinc-700"><?= (int) $rv['cargas'] ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono text-zinc-700"><?= number_format((float) $rv['total_litros'], 1) ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono <?= $km_ok ? 'text-zinc-800' : 'text-zinc-300' ?>"><?= $km_ok ? number_format((int) $rv['km_recorridos']) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold <?= $rc ?>"><?= $r > 0 ? number_format($r, 2) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono text-zinc-600 hidden md:table-cell">$<?= number_format((float) $rv['precio_litro_prom'], 2) ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono text-zinc-700 hidden md:table-cell">$<?= number_format((float) $rv['costo_comb'], 2) ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono <?= $rv['costo_km'] > 0 ? 'text-zinc-800' : 'text-zinc-300' ?>"><?= $rv['costo_km'] > 0 ? '$' . number_format((float) $rv['costo_km'], 2) : '—' ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200 font-semibold text-zinc-900">
+                    <tr>
+                        <td class="px-4 py-2.5">Totales / flota</td>
+                        <td class="px-4 py-2.5 text-right"><?= $t_cargas ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono"><?= number_format($t_litros, 1) ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono"><?= $t_km > 0 ? number_format($t_km) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono"><?= ($t_km > 0 && $t_litros > 0) ? number_format($t_km / $t_litros, 2) : '—' ?></td>
+                        <td class="px-4 py-2.5 hidden md:table-cell"></td>
+                        <td class="px-4 py-2.5 text-right font-mono hidden md:table-cell">$<?= number_format($t_costo, 2) ?></td>
+                        <td class="px-4 py-2.5 text-right font-mono"><?= ($t_km > 0 && $t_costo > 0) ? '$' . number_format($t_costo / $t_km, 2) : '—' ?></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="px-5 py-2.5 text-[11px] text-zinc-400 border-t border-zinc-100">
+            "Km recorridos" = diferencia del odómetro (máx − mín) capturado a mano en el periodo. "Km/L" = km recorridos ÷ litros. "Costo/km" = costo de combustible ÷ km recorridos.
         </div>
         <?php endif; ?>
+    </div>
+
+    <!-- Rendimiento combustible + Top mantenimientos -->
+    <div class="grid grid-cols-1 gap-5">
 
         <!-- Top mantenimientos -->
         <?php if (!empty($mantenimientos)): ?>
@@ -732,7 +763,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="route" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Uso de la flota · km recorridos</h3>
-            <span class="ml-auto text-[11px] text-zinc-400">Según GPS (Monsat) · el costo/km incluye todo el gasto (combustible + mantenimiento + …)</span>
+            <span class="ml-auto text-[11px] text-zinc-400">Km del odómetro (capturas) · el costo/km incluye todo el gasto (combustible + mantenimiento + …)</span>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

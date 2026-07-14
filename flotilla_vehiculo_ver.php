@@ -162,25 +162,128 @@ if (es_post() && $puede_gestionar) {
                 db_exec("INSERT INTO flotilla_combustible (vehiculo_id,conductor_id,fecha,km_odometro,litros,precio_litro,tipo_combustible,estacion,ticket_numero,es_tanque_lleno,km_recorridos,rendimiento_kml,notas,creado_por{$comb_cols_x})
                          VALUES (:vehiculo_id,:conductor_id,:fecha,:km_odometro,:litros,:precio_litro,:tipo_combustible,:estacion,:ticket_numero,:es_tanque_lleno,:km_recorridos,:rendimiento_kml,:notas,:creado_por{$comb_vals_x})", $comb);
 
-                // Actualizar km_actual del vehículo
-                if ($km_nuevo > $vehiculo['km_actual']) {
-                    db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
-                        ['km' => $km_nuevo, 'id' => $id, 'km2' => $km_nuevo]);
-                }
+                $comb_id = db_last_id();
 
-                // Registrar gasto automático
+                // Sincronizar odómetro (km_actual + historial 'combustible') desde las cargas.
+                flotilla_combustible_resync_odometro($id);
+
+                // Registrar gasto automático (ligado a la carga por combustible_id).
                 $cat_comb = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre LIKE '%Combustible%' LIMIT 1");
                 if ($cat_comb) {
-                    db_exec("INSERT INTO flotilla_gastos (vehiculo_id,categoria_id,fecha,concepto,monto,km_odometro,creado_por)
-                             VALUES (:vid,:cat,:fecha,:concepto,:monto,:km,:cp)",
-                        ['vid'=>$id,'cat'=>$cat_comb['id'],'fecha'=>date('Y-m-d',strtotime($comb['fecha'])),
-                         'concepto'=>"Combustible · {$litros}L · " . ($comb['estacion'] ?? 'Sin estación'),
-                         'monto'=>round($litros*$precio,2),'km'=>$km_nuevo,'cp'=>$u['id']]);
+                    $g_cols = ''; $g_vals = '';
+                    $g_params = ['vid'=>$id,'cat'=>$cat_comb['id'],'fecha'=>date('Y-m-d',strtotime($comb['fecha'])),
+                        'concepto'=>"Combustible · {$litros}L · " . ($comb['estacion'] ?? 'Sin estación'),
+                        'monto'=>round($litros*$precio,2),'km'=>$km_nuevo,'cp'=>$u['id']];
+                    if (db_one("SHOW COLUMNS FROM flotilla_gastos LIKE 'combustible_id'")) {
+                        $g_cols = ',combustible_id'; $g_vals = ',:comb_id'; $g_params['comb_id'] = $comb_id;
+                    }
+                    db_exec("INSERT INTO flotilla_gastos (vehiculo_id,categoria_id,fecha,concepto,monto,km_odometro,creado_por{$g_cols})
+                             VALUES (:vid,:cat,:fecha,:concepto,:monto,:km,:cp{$g_vals})", $g_params);
                 }
 
                 flash_set('exito', 'Carga de combustible registrada.');
                 header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=combustible"));
                 exit;
+            }
+        }
+
+        // --- Editar carga de combustible (solo administradores) ---
+        if ($op === 'combustible_editar' && $es_admin) {
+            $eid  = (int) input('edit_id', 0);
+            $orig = db_one("SELECT * FROM flotilla_combustible WHERE id = :id AND vehiculo_id = :vid", ['id' => $eid, 'vid' => $id]);
+            if (!$orig) {
+                $errores[] = 'No se encontró la carga a editar.';
+            } else {
+                $km_nuevo = (int) input('km_odometro', 0);
+                $litros   = (float) input('litros', 0);
+                $costo_modo = (string) input('costo_modo', 'precio');
+                if ($costo_modo === 'monto') {
+                    $monto_total = (float) input('monto_total', 0);
+                    $precio = ($litros > 0) ? round($monto_total / $litros, 3) : 0;
+                } else {
+                    $precio = (float) input('precio_litro', 0);
+                }
+                $estacion_id  = (int) input('estacion_id', 0) ?: null;
+                $estacion_nom = null;
+                if ($estacion_id) {
+                    $er = db_one("SELECT nombre FROM flotilla_estaciones WHERE id = :id", ['id' => $estacion_id]);
+                    $estacion_nom = $er['nombre'] ?? null;
+                }
+                $fecha    = trim((string) input('fecha_carga', ''));
+                $es_lleno = (int) input('es_tanque_lleno', 1);
+
+                if (!$fecha)       $errores[] = 'La fecha es obligatoria.';
+                if ($km_nuevo <= 0) $errores[] = 'El km del odómetro es obligatorio.';
+                if ($litros <= 0)  $errores[] = 'Los litros deben ser mayor a 0.';
+                if ($precio <= 0)  $errores[] = 'Captura el precio por litro o el monto total pagado.';
+
+                $recibo_url_nuevo = null;
+                if (empty($errores) && !empty($_FILES['recibo']['name'])) {
+                    $rec = flotilla_guardar_recibo($_FILES['recibo'] ?? []);
+                    if ($rec['error']) $errores[] = $rec['error'];
+                    else $recibo_url_nuevo = $rec['ruta'];
+                }
+
+                if (empty($errores)) {
+                    try {
+                        $ultima = db_one(
+                            "SELECT km_odometro FROM flotilla_combustible
+                              WHERE vehiculo_id = :vid AND id <> :eid
+                                AND (fecha < :f1 OR (fecha = :f2 AND id < :eid2))
+                              ORDER BY fecha DESC, id DESC LIMIT 1",
+                            ['vid' => $id, 'eid' => $eid, 'f1' => $fecha, 'f2' => $fecha, 'eid2' => $eid]
+                        );
+                        $km_recorridos = null; $rendimiento = null;
+                        if ($ultima && $es_lleno && $km_nuevo > (int) $ultima['km_odometro']) {
+                            $km_recorridos = $km_nuevo - (int) $ultima['km_odometro'];
+                            if ($litros > 0) $rendimiento = round($km_recorridos / $litros, 3);
+                        }
+
+                        $sets = "conductor_id=:cond, fecha=:fecha, km_odometro=:km, litros=:litros,
+                                 precio_litro=:precio, estacion=:estacion, es_tanque_lleno=:lleno,
+                                 km_recorridos=:kmrec, rendimiento_kml=:rend";
+                        $pu = [
+                            'cond' => (int) input('conductor_id', 0) ?: null, 'fecha' => $fecha,
+                            'km' => $km_nuevo, 'litros' => $litros, 'precio' => $precio,
+                            'estacion' => $estacion_nom, 'lleno' => $es_lleno,
+                            'kmrec' => $km_recorridos, 'rend' => $rendimiento, 'id' => $eid,
+                        ];
+                        if (db_one("SHOW COLUMNS FROM flotilla_combustible LIKE 'estacion_id'")) {
+                            $sets .= ", estacion_id=:estacion_id"; $pu['estacion_id'] = $estacion_id;
+                        }
+                        if ($recibo_url_nuevo !== null && db_one("SHOW COLUMNS FROM flotilla_combustible LIKE 'recibo_url'")) {
+                            $sets .= ", recibo_url=:recibo"; $pu['recibo'] = $recibo_url_nuevo;
+                        }
+                        db_exec("UPDATE flotilla_combustible SET {$sets} WHERE id = :id", $pu);
+
+                        // Sincronizar el gasto ligado (si la carga lo tiene enlazado).
+                        if (db_one("SHOW COLUMNS FROM flotilla_gastos LIKE 'combustible_id'")) {
+                            db_exec(
+                                "UPDATE flotilla_gastos
+                                    SET conductor_id = :cond, fecha = :fecha, monto = :monto, km_odometro = :km,
+                                        concepto = :concepto
+                                  WHERE combustible_id = :cid",
+                                [
+                                    'cond' => (int) input('conductor_id', 0) ?: null,
+                                    'fecha' => date('Y-m-d', strtotime($fecha)),
+                                    'monto' => round($litros * $precio, 2), 'km' => $km_nuevo,
+                                    'concepto' => "Combustible · {$litros}L · " . ($estacion_nom ?? 'Sin estación'),
+                                    'cid' => $eid,
+                                ]
+                            );
+                        }
+
+                        flotilla_combustible_resync_odometro($id);
+
+                        registrar_auditoria('editar_combustible', 'flotilla_combustible', $eid,
+                            "Vehículo ID {$id}: {$litros}L @ \${$precio}");
+                        flash_set('exito', 'Carga de combustible actualizada.');
+                        header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=combustible"));
+                        exit;
+                    } catch (Throwable $e) {
+                        $errores[] = 'Error al actualizar: ' . $e->getMessage();
+                    }
+                }
             }
         }
 
@@ -267,6 +370,9 @@ if (es_post() && $puede_gestionar) {
                 if ($km_mant) {
                     db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
                         ['km' => $km_mant, 'id' => $id, 'km2' => $km_mant]);
+                    if ($km_mant > (int) $vehiculo['km_actual']) {
+                        flotilla_odometro_registrar($id, $km_mant, 'mantenimiento', (int) $vehiculo['km_actual'], $u['id']);
+                    }
                 }
                 flotilla_vehiculo_taller($id, $fecha_fin_m === null);
                 flotilla_mant_gasto_sync($mant_id_v, $id, $costo_m, $taller_m,
@@ -402,6 +508,7 @@ if (es_post() && $puede_gestionar) {
                 if ($km_ll > $vehiculo['km_actual']) {
                     db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
                         ['km' => $km_ll, 'id' => $id, 'km2' => $km_ll]);
+                    flotilla_odometro_registrar($id, $km_ll, 'viaje', (int) $vehiculo['km_actual'], $u['id']);
                 }
                 flash_set('exito', 'Viaje cerrado.');
             }
@@ -414,9 +521,10 @@ if (es_post() && $puede_gestionar) {
 // Cargar datos para las tabs
 $tab         = (string) input('tab', 'info');
 $documentos  = flotilla_documentos_vehiculo($id);
-$cmb_desde   = trim((string) input('cmb_desde', ''));
-$cmb_hasta   = trim((string) input('cmb_hasta', ''));
-$combustible = flotilla_combustible_vehiculo($id, 10, $cmb_desde ?: null, $cmb_hasta ?: null);
+// Periodo global del vehículo (default: mes actual). Un solo filtro para todo.
+$h_desde = trim((string) input('hd', '')) ?: date('Y-m-01');
+$h_hasta = trim((string) input('hh', '')) ?: date('Y-m-t');
+$combustible = flotilla_combustible_vehiculo($id, 500, $h_desde, $h_hasta);
 $mantenimts  = flotilla_mantenimientos_pendientes($id);
 $mant_abiertos_v = flotilla_mant_abiertos($id);
 $fotos       = flotilla_vehiculo_fotos($id);
@@ -449,6 +557,9 @@ $programas   = db_all("SELECT * FROM flotilla_mant_programas WHERE activo=1 ORDE
 $sucursales  = db_all("SELECT id, nombre FROM sucursales WHERE activo=1 ORDER BY nombre");
 
 $rendimiento_prom = flotilla_rendimiento_promedio($id);
+// Gasto y Km del periodo global (definido arriba: $h_desde / $h_hasta).
+$gasto_periodo  = flotilla_gasto_total($id, $h_desde, $h_hasta);
+$km_periodo_hdr = flotilla_km_periodo_cargas($id, $h_desde, $h_hasta);
 $gasto_mes   = flotilla_gasto_total($id, date('Y-m-01'), date('Y-m-t'));
 $km_gps_anio = flotilla_km_gps_total($id, date('Y-01-01'), date('Y-m-d'));
 $km_gps_ult  = flotilla_km_gps_ultima_fecha($id);
@@ -564,21 +675,41 @@ require_once __DIR__ . '/config/header.php';
                     <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">km/L prom.</div>
                 </div>
                 <?php endif; ?>
-                <div class="bg-zinc-50 rounded-lg px-4 py-2">
-                    <div class="font-display text-xl font-extrabold text-zinc-900">$<?= number_format($gasto_mes, 0) ?></div>
-                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Gasto mes</div>
+                <div class="bg-zinc-50 rounded-lg px-4 py-2" title="Gasto total en el periodo seleccionado">
+                    <div class="font-display text-xl font-extrabold text-zinc-900">$<?= number_format($gasto_periodo, 0) ?></div>
+                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Gasto periodo</div>
                 </div>
-                <div class="bg-zinc-50 rounded-lg px-4 py-2">
-                    <div class="font-display text-xl font-extrabold text-zinc-900">$<?= number_format($gasto_anio, 0) ?></div>
-                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Gasto año</div>
+                <div class="bg-zinc-50 rounded-lg px-4 py-2" title="Km recorridos en el periodo, comprobados por cargas manuales (sin GPS)">
+                    <div class="font-display text-xl font-extrabold text-zinc-900"><?= number_format($km_periodo_hdr['km']) ?></div>
+                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Km recorridos</div>
                 </div>
-                <?php if (($km_gps_anio ?? 0) > 0): ?>
-                <div class="bg-zinc-50 rounded-lg px-4 py-2" title="Kilómetros recorridos este año según el GPS (Monsat)<?= $km_gps_ult ? ' · último dato: ' . e(fmt_fecha($km_gps_ult, false)) : '' ?>">
-                    <div class="font-display text-xl font-extrabold text-zinc-900"><?= number_format($km_gps_anio) ?></div>
-                    <div class="text-[10px] uppercase tracking-wide font-bold text-zinc-500">Km año (GPS)</div>
-                </div>
-                <?php endif; ?>
             </div>
+        </div>
+
+        <!-- Filtro de periodo (afecta "Gasto periodo" y "Km recorridos") -->
+        <div class="mt-4 pt-4 border-t border-zinc-100 flex items-end gap-2 flex-wrap">
+            <form method="GET" class="flex items-end gap-2 flex-wrap">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="tab" value="<?= e($tab) ?>">
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-0.5">Desde</label>
+                    <input type="date" name="hd" value="<?= e($h_desde) ?>"
+                           class="px-2 py-1.5 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-0.5">Hasta</label>
+                    <input type="date" name="hh" value="<?= e($h_hasta) ?>"
+                           class="px-2 py-1.5 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                </div>
+                <button type="submit" class="px-3 py-1.5 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Aplicar</button>
+            </form>
+            <div class="flex items-center gap-1">
+                <a href="<?= url("flotilla_vehiculo_ver.php?id=$id&tab=" . urlencode($tab) . "&hd=" . date('Y-m-01') . "&hh=" . date('Y-m-t')) ?>"
+                   class="px-2.5 py-1.5 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">Mes actual</a>
+                <a href="<?= url("flotilla_vehiculo_ver.php?id=$id&tab=" . urlencode($tab) . "&hd=" . date('Y-01-01') . "&hh=" . date('Y-12-31')) ?>"
+                   class="px-2.5 py-1.5 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">Año</a>
+            </div>
+            <span class="text-[11px] text-zinc-400 self-center">Periodo: <?= e(fmt_fecha($h_desde, false)) ?> – <?= e(fmt_fecha($h_hasta, false)) ?></span>
         </div>
     </div>
 
@@ -924,29 +1055,7 @@ require_once __DIR__ . '/config/header.php';
         </div>
         <?php endif; ?>
 
-        <!-- Filtro por rango de fechas -->
-        <form method="GET" class="bg-white rounded-xl border border-zinc-200 p-3 flex flex-wrap gap-2 items-end">
-            <input type="hidden" name="id" value="<?= $id ?>">
-            <input type="hidden" name="tab" value="combustible">
-            <div>
-                <label class="block text-xs font-bold text-zinc-500 mb-1">Desde</label>
-                <input type="date" name="cmb_desde" value="<?= e($cmb_desde) ?>"
-                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-zinc-500 mb-1">Hasta</label>
-                <input type="date" name="cmb_hasta" value="<?= e($cmb_hasta) ?>"
-                       class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
-            </div>
-            <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Filtrar</button>
-            <?php if ($cmb_desde || $cmb_hasta): ?>
-            <a href="<?= url("flotilla_vehiculo_ver.php?id=$id&tab=combustible") ?>"
-               class="px-3 py-2 rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-50">Limpiar</a>
-            <?php endif; ?>
-            <span class="text-xs text-zinc-400 ml-auto self-center">
-                <?= ($cmb_desde || $cmb_hasta) ? 'Mostrando cargas del rango seleccionado' : 'Mostrando las últimas 10 cargas' ?>
-            </span>
-        </form>
+        <p class="text-xs text-zinc-400">Mostrando cargas del periodo seleccionado arriba (<?= e(fmt_fecha($h_desde, false)) ?> – <?= e(fmt_fecha($h_hasta, false)) ?>). Cámbialo con el filtro del encabezado.</p>
 
         <?php if (empty($combustible)): ?>
         <div class="bg-white rounded-xl border border-zinc-200 py-12 text-center">
@@ -961,9 +1070,11 @@ require_once __DIR__ . '/config/header.php';
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="fecha">Fecha</th>
                         <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Km</th>
                         <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Litros</th>
+                        <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell" data-orden-tipo="num">Precio/L</th>
                         <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase" data-orden-tipo="num">Total</th>
                         <th class="text-right px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden md:table-cell" data-orden-tipo="num">km/L</th>
                         <th class="text-left px-4 py-3 text-xs font-bold text-zinc-500 uppercase hidden lg:table-cell">Estación</th>
+                        <th class="px-4 py-3" data-no-orden></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -972,6 +1083,7 @@ require_once __DIR__ . '/config/header.php';
                         <td class="px-4 py-3 text-zinc-700"><?= fmt_fecha_hora($c['fecha']) ?></td>
                         <td class="px-4 py-3 text-right font-mono"><?= number_format($c['km_odometro']) ?></td>
                         <td class="px-4 py-3 text-right font-semibold"><?= number_format($c['litros'], 2) ?>L</td>
+                        <td class="px-4 py-3 text-right font-mono text-zinc-600 hidden md:table-cell">$<?= number_format((float)$c['precio_litro'], 3) ?></td>
                         <td class="px-4 py-3 text-right font-semibold text-zinc-900">$<?= number_format($c['total'], 2) ?></td>
                         <td class="px-4 py-3 text-right hidden md:table-cell">
                             <?php if ($c['rendimiento_kml']): ?>
@@ -986,6 +1098,27 @@ require_once __DIR__ . '/config/header.php';
                             <a href="<?= url('assets/' . $c['recibo_url']) ?>" target="_blank" class="ml-1 inline-flex items-center text-bacal-700 hover:underline" title="Ver recibo">
                                 <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>
                             </a>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <?php if ($es_admin):
+                                $cedit = [
+                                    'id'           => (int) $c['id'],
+                                    'fecha'        => date('Y-m-d\TH:i', strtotime($c['fecha'])),
+                                    'km'           => (int) $c['km_odometro'],
+                                    'litros'       => (float) $c['litros'],
+                                    'precio'       => (float) $c['precio_litro'],
+                                    'estacion_id'  => (int) ($c['estacion_id'] ?? 0),
+                                    'lleno'        => (int) $c['es_tanque_lleno'],
+                                    'conductor_id' => (int) ($c['conductor_id'] ?? 0),
+                                    'recibo'       => !empty($c['recibo_url']),
+                                ];
+                            ?>
+                            <button type="button" title="Editar carga"
+                                    onclick="editarCargaV(<?= htmlspecialchars(json_encode($cedit, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>)"
+                                    class="p-1.5 rounded hover:bg-bacal-50 text-zinc-400 hover:text-bacal-700">
+                                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                            </button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -1090,6 +1223,119 @@ require_once __DIR__ . '/config/header.php';
             </script>
         </div>
     </div>
+
+    <!-- Modal editar carga combustible (solo administradores) -->
+    <?php if ($es_admin): ?>
+    <div id="modal-comb-edit" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/50" onclick="this.parentElement.classList.add('hidden')"></div>
+        <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-4 flex items-center gap-2">
+                <i data-lucide="pencil" class="w-4 h-4 text-bacal-700"></i> Editar carga de combustible
+            </h3>
+            <form method="POST" enctype="multipart/form-data" class="space-y-3">
+                <?= csrf_input() ?>
+                <input type="hidden" name="op" value="combustible_editar">
+                <input type="hidden" name="edit_id" id="ve_edit_id" value="">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Fecha y hora <span class="text-red-500">*</span></label>
+                        <input type="datetime-local" name="fecha_carga" id="ve_fecha" required
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Km odómetro <span class="text-red-500">*</span></label>
+                        <input type="number" name="km_odometro" id="ve_km" required min="0"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Litros <span class="text-red-500">*</span></label>
+                        <input type="number" name="litros" id="ve_litros" required step="0.001" min="0.1"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Capturar costo por</label>
+                        <select name="costo_modo" id="ve_modo" onchange="veModo()" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                            <option value="precio">Precio por litro</option>
+                            <option value="monto">Monto total pagado</option>
+                        </select>
+                    </div>
+                    <div id="ve_campo_precio">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Precio / litro <span class="text-red-500">*</span></label>
+                        <input type="number" name="precio_litro" id="ve_precio" step="0.001" min="0.01"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div id="ve_campo_monto" class="hidden">
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Monto total <span class="text-red-500">*</span></label>
+                        <input type="number" name="monto_total" id="ve_monto" step="0.01" min="0.01"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">¿Tanque lleno?</label>
+                        <select name="es_tanque_lleno" id="ve_lleno" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                            <option value="1">Sí (tanque lleno)</option>
+                            <option value="0">No (parcial)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Gasolinera / Estación</label>
+                    <select name="estacion_id" id="ve_estacion" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        <option value="">— Sin especificar —</option>
+                        <?php foreach (flotilla_estaciones_activas() as $est): ?>
+                        <option value="<?= $est['id'] ?>"><?= e($est['nombre']) ?><?= $est['direccion'] ? ' · ' . e($est['direccion']) : '' ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Recibo / factura (imagen o PDF)</label>
+                    <input type="file" name="recibo" accept="image/*,application/pdf"
+                           class="w-full text-sm text-zinc-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-bacal-50 file:text-bacal-700 file:text-xs file:font-semibold hover:file:bg-bacal-100">
+                    <p id="ve_recibo_nota" class="text-[11px] text-zinc-400 mt-0.5"></p>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Conductor</label>
+                    <select name="conductor_id" id="ve_conductor" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        <option value="">— Sin especificar —</option>
+                        <?php foreach ($conductores as $c): ?>
+                        <option value="<?= $c['id'] ?>"><?= e($c['nombre_completo']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+                    <button type="button" onclick="document.getElementById('modal-comb-edit').classList.add('hidden')"
+                            class="px-4 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm font-medium">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Guardar cambios</button>
+                </div>
+            </form>
+            <script>
+            function veModo(){
+                var m = document.getElementById('ve_modo').value;
+                document.getElementById('ve_campo_precio').classList.toggle('hidden', m !== 'precio');
+                document.getElementById('ve_campo_monto').classList.toggle('hidden', m !== 'monto');
+            }
+            function editarCargaV(d){
+                document.getElementById('ve_edit_id').value  = d.id;
+                document.getElementById('ve_fecha').value     = d.fecha || '';
+                document.getElementById('ve_km').value        = d.km;
+                document.getElementById('ve_litros').value    = d.litros;
+                document.getElementById('ve_modo').value      = 'precio';
+                document.getElementById('ve_precio').value    = d.precio;
+                document.getElementById('ve_monto').value     = '';
+                document.getElementById('ve_lleno').value     = d.lleno ? '1' : '0';
+                document.getElementById('ve_estacion').value  = d.estacion_id ? String(d.estacion_id) : '';
+                document.getElementById('ve_conductor').value = d.conductor_id ? String(d.conductor_id) : '';
+                var rn = document.getElementById('ve_recibo_nota');
+                if (rn) rn.textContent = d.recibo
+                    ? 'Ya hay un recibo adjunto. Sube uno solo si quieres reemplazarlo.'
+                    : 'Sin recibo adjunto.';
+                veModo();
+                document.getElementById('modal-comb-edit').classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+            }
+            </script>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- ================================================================ -->
     <!-- TAB: Mantenimientos                                               -->

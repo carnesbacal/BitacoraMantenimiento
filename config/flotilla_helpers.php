@@ -317,6 +317,72 @@ function flotilla_odometro_registrar(int $vid, int $km, string $origen, ?int $km
     } catch (Throwable $e) {}
 }
 
+/**
+ * Resincroniza el odómetro de un vehículo a partir de sus cargas de combustible.
+ * Reconstruye las lecturas de historial con origen 'combustible' (una por carga)
+ * y recalcula km_actual solo con fuentes MANUALES (nunca GPS). Idempotente:
+ * se puede llamar tras crear, editar o eliminar una carga.
+ */
+function flotilla_combustible_resync_odometro(int $vid): void {
+    if ($vid <= 0) return;
+    try {
+        $tiene_hist = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
+        if ($tiene_hist) {
+            // Las lecturas 'combustible' son un espejo de las cargas: se reconstruyen.
+            db_exec("DELETE FROM flotilla_odometro_historial WHERE vehiculo_id = :v AND origen = 'combustible'", ['v' => $vid]);
+            db_exec(
+                "INSERT INTO flotilla_odometro_historial (vehiculo_id, km, km_anterior, origen, usuario_id, leido_en)
+                 SELECT vehiculo_id, km_odometro, NULL, 'combustible', creado_por, fecha
+                   FROM flotilla_combustible
+                  WHERE vehiculo_id = :v AND km_odometro > 0",
+                ['v' => $vid]
+            );
+            // km_actual = máximo de lecturas manuales (excluye GPS), sin bajar del inicial.
+            db_exec(
+                "UPDATE flotilla_vehiculos v
+                    SET v.km_actual = GREATEST(
+                        v.km_inicial,
+                        COALESCE((SELECT MAX(h.km) FROM flotilla_odometro_historial h
+                                   WHERE h.vehiculo_id = v.id AND h.origen <> 'gps'), 0)
+                    )
+                  WHERE v.id = :v",
+                ['v' => $vid]
+            );
+        } else {
+            // Sin tabla de historial: km_actual desde las cargas de combustible.
+            db_exec(
+                "UPDATE flotilla_vehiculos v
+                    SET v.km_actual = GREATEST(
+                        v.km_inicial,
+                        COALESCE((SELECT MAX(c.km_odometro) FROM flotilla_combustible c WHERE c.vehiculo_id = v.id), 0)
+                    )
+                  WHERE v.id = :v",
+                ['v' => $vid]
+            );
+        }
+    } catch (Throwable $e) {}
+}
+
+/**
+ * Km recorridos de un vehículo en un rango de fechas, COMPROBADOS por las cargas
+ * de combustible (capturas manuales / Xiga). Nunca usa GPS. Es MAX(km) - MIN(km)
+ * de las cargas del rango; requiere al menos 2 cargas con km para dar un dato.
+ * Devuelve ['km' => int, 'cargas' => int].
+ */
+function flotilla_km_periodo_cargas(int $vid, ?string $desde = null, ?string $hasta = null): array {
+    $w = ['vehiculo_id = :v', 'km_odometro > 0'];
+    $p = ['v' => $vid];
+    if ($desde) { $w[] = 'DATE(fecha) >= :d'; $p['d'] = $desde; }
+    if ($hasta) { $w[] = 'DATE(fecha) <= :h'; $p['h'] = $hasta; }
+    try {
+        $r = db_one("SELECT MAX(km_odometro) mx, MIN(km_odometro) mn, COUNT(*) c
+                     FROM flotilla_combustible WHERE " . implode(' AND ', $w), $p);
+    } catch (Throwable $e) { $r = null; }
+    $c  = (int) ($r['c'] ?? 0);
+    $km = ($c >= 2) ? max(0, (int) $r['mx'] - (int) $r['mn']) : 0;
+    return ['km' => $km, 'cargas' => $c];
+}
+
 /** Historial de lecturas del odómetro de un vehículo (más reciente primero). */
 function flotilla_odometro_lista(int $vid, int $limite = 100): array {
     try {
@@ -1037,7 +1103,6 @@ function flotilla_monsat_importar(string $html): array {
             $dias++;
         }
         if ($dias > 0) {
-            flotilla_odometro_sync_gps($vid);
             $out['vehiculos']++;
             $out['dias'] += $dias;
         }
