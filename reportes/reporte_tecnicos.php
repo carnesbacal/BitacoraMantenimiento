@@ -9,11 +9,13 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
+require_once __DIR__ . '/../config/reportes_export.php';
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
 
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // Estadísticas por técnico
 $tecnicos = db_all(
@@ -56,6 +58,14 @@ unset($t);
 // Solo admin ve costos de mano de obra (salarios)
 $ver_costos = puede_ver_mano_obra_interna();
 
+$suc_label = 'Todas las sucursales';
+if ($sucursal_filtro) {
+    foreach ($sucursales_lista as $sl) { if ((int) $sl['id'] === (int) $sucursal_filtro) { $suc_label = $sl['nombre']; break; } }
+    if ($suc_label === 'Todas las sucursales') { $sr = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $sucursal_filtro]); if ($sr) $suc_label = $sr['nombre']; }
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'productividad_tecnicos_' . date('Ymd_His') . '.pdf';
+
 if ($es_exportacion) {
     csv_iniciar('productividad_tecnicos_' . date('Ymd_His') . '.csv');
     csv_fila(['PRODUCTIVIDAD POR TÉCNICO']);
@@ -89,16 +99,44 @@ if ($es_exportacion) {
     exit;
 }
 
+if ($es_xlsx) {
+    require_once __DIR__ . '/../config/xlsx_writer.php';
+    $xlsx = new XlsxWriter();
+    $xlsx->addSheet('Técnicos');
+    $xlsx->addHeaderRow(['PRODUCTIVIDAD POR TÉCNICO'], true);
+    $xlsx->addRow(['Período: ' . $periodo['etiqueta']]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+    $xlsx->addBlankRow();
+    $cols = ['Técnico', 'Rol', 'Asignadas', 'Resueltas', 'Abiertas', '% Cierre', 'Críticas', 'T. resol (min)', 'SLA cumplido', 'SLA incumplido', '% SLA'];
+    if ($ver_costos) { $cols = array_merge($cols, ['Horas', 'Tarifa/hora', 'Costo mano de obra']); }
+    $xlsx->addHeaderRow($cols, true);
+    foreach ($tecnicos as $t) {
+        $fila = [$t['nombre_completo'], $t['rol_nombre'], (int) $t['total_asignadas'], (int) $t['resueltas'], (int) $t['abiertas'],
+            $t['pct_resolucion'] . '%', (int) $t['criticas_atendidas'],
+            $t['avg_resolucion'] !== null ? round((float) $t['avg_resolucion']) : '',
+            (int) $t['sla_cumplido'], (int) $t['sla_incumplido'], $t['sla_pct'] !== null ? $t['sla_pct'] . '%' : ''];
+        if ($ver_costos) {
+            $fila[] = round((float) $t['total_horas'], 2);
+            $fila[] = $t['tarifa_hora'] !== null ? round((float) $t['tarifa_hora'], 2) : '';
+            $fila[] = round((float) $t['costo_mano_obra'], 2);
+        }
+        $xlsx->addRow($fila);
+    }
+    $xlsx->download('productividad_tecnicos_' . date('Ymd_His') . '.xlsx');
+    exit;
+}
+
 $titulo_pagina = 'Productividad por técnico';
 $pagina_activa = 'reportes';
 require_once __DIR__ . '/../config/header.php';
 ?>
 
-<style>
-@media print { .no-print { display: none !important; } aside, header.h-16 { display: none !important; } body { background: white !important; } }
-</style>
+<?php reporte_export_assets(); ?>
 
-<div class="animate-fade-in space-y-5">
+<div id="rep-area" data-pdf="<?= e($pdf_filename) ?>" class="animate-fade-in space-y-5">
+
+    <?php reporte_doc_header('Productividad por técnico', $periodo['etiqueta'] . ' · ' . $suc_label, $rep_user); ?>
 
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 no-print">
         <div class="flex items-center gap-3">
@@ -111,9 +149,12 @@ require_once __DIR__ . '/../config/header.php';
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <button onclick="window.print()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
-            </button>
+            <?php reporte_print_button(); ?>
+            <?php reporte_pdf_button(); ?>
+            <a href="<?= url('reportes/reporte_tecnicos.php?' . http_build_query(array_merge($_GET, ['exportar' => 'xlsx']))) ?>"
+               class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
             <a href="<?= url('reportes/reporte_tecnicos.php?' . http_build_query(array_merge($_GET, ['exportar' => 'csv']))) ?>"
                class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
                 <i data-lucide="download" class="w-4 h-4"></i> CSV

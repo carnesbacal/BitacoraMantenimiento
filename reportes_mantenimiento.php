@@ -29,6 +29,7 @@ if (!tiene_permiso('ver_reportes')) {
 
 // ¿Es una solicitud de exportación?
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // ----------------------------------------------------------------------------
 // Filtros de rango de fechas
@@ -282,6 +283,49 @@ $med_resumen  = consumo_resumen_periodo($f_desde, $f_hasta, $f_sucursal ?: null)
 $med_por_tipo = consumo_por_tipo($f_desde, $f_hasta, $f_sucursal ?: null);
 
 // ----------------------------------------------------------------------------
+// Periodo anterior (misma duración) para comparativa + datos para gráficas
+// ----------------------------------------------------------------------------
+$dur_dias = (int) (new DateTime($f_hasta))->diff(new DateTime($f_desde))->days;
+$p_hasta  = date('Y-m-d', strtotime($f_desde . ' -1 day'));
+$p_desde  = date('Y-m-d', strtotime($p_hasta . ' -' . $dur_dias . ' days'));
+$totales_prev = db_one(
+    "SELECT
+        (SELECT COUNT(*) FROM incidencias i WHERE DATE(i.creado_en) BETWEEN :d AND :h $cond_suc) AS total_ordenes,
+        (SELECT COUNT(*) FROM incidencia_refacciones ir INNER JOIN incidencias i ON ir.incidencia_id = i.id
+         WHERE DATE(ir.creado_en) BETWEEN :d2 AND :h2 $cond_suc) AS total_movimientos_refacciones,
+        (SELECT COALESCE(SUM(ir.costo_total),0) FROM incidencia_refacciones ir INNER JOIN incidencias i ON ir.incidencia_id = i.id
+         WHERE DATE(ir.creado_en) BETWEEN :d3 AND :h3 $cond_suc) AS costo_total_refacciones,
+        (SELECT COUNT(*) FROM herramientas_prestamos p WHERE DATE(p.fecha_salida) BETWEEN :d4 AND :h4) AS total_prestamos",
+    ['d'=>$p_desde,'h'=>$p_hasta,'d2'=>$p_desde,'h2'=>$p_hasta,'d3'=>$p_desde,'h3'=>$p_hasta,'d4'=>$p_desde,'h4'=>$p_hasta]
+);
+
+$suc_label = 'Todas las sucursales';
+if ($f_sucursal > 0) {
+    $sr = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $f_sucursal]);
+    $suc_label = $sr['nombre'] ?? 'Sucursal';
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'reporte_mantenimiento_' . date('Ymd_His') . '.pdf';
+
+$delta_html = function (float $cur, float $prev, bool $neutral = false): string {
+    if ($prev <= 0) return $cur > 0 ? '<span class="text-zinc-400">sin base previa</span>' : '';
+    $d = ($cur - $prev) / $prev * 100;
+    if (abs($d) < 0.1) return '<span class="text-zinc-400">igual que el anterior</span>';
+    $up = $d > 0;
+    $cls = $neutral ? 'text-zinc-500' : ($up ? 'text-red-600' : 'text-emerald-600');
+    return '<span class="' . $cls . ' font-semibold">' . ($up ? '&#9650;' : '&#9660;') . ' '
+        . number_format(abs($d), 1) . '%</span> <span class="text-zinc-400">vs anterior</span>';
+};
+
+// Datos para gráficas
+$mes_labels  = array_map(fn($m) => date('M Y', strtotime($m['mes'] . '-01')), $costo_mensual);
+$mes_costo   = array_map(fn($m) => round((float) $m['costo_total'], 2), $costo_mensual);
+$mes_ordenes = array_map(fn($m) => (int) $m['ordenes'], $costo_mensual);
+$disc_labels = array_map(fn($c) => $c['categoria_nombre'] ?? 'Sin categoría', $costo_por_categoria);
+$disc_costo  = array_map(fn($c) => round((float) $c['costo_refacciones'], 2), $costo_por_categoria);
+$disc_colors = array_map(fn($c) => $c['color'] ?: '#a1a1aa', $costo_por_categoria);
+
+// ----------------------------------------------------------------------------
 // EXPORTACIÓN A EXCEL (CSV con BOM UTF-8, abre directo en Excel)
 // ----------------------------------------------------------------------------
 if ($es_exportacion) {
@@ -455,12 +499,200 @@ if ($es_exportacion) {
     exit;
 }
 
+// ----------------------------------------------------------------------------
+// EXPORTACIÓN A EXCEL (.xlsx) multi-hoja
+// ----------------------------------------------------------------------------
+if ($es_xlsx) {
+    require_once __DIR__ . '/config/xlsx_writer.php';
+    $xlsx = new XlsxWriter();
+    $periodo_label = "Período: del $f_desde al $f_hasta";
+
+    // Resumen + comparativa
+    $xlsx->addSheet('Resumen');
+    $xlsx->addHeaderRow(['REPORTE DE MANTENIMIENTO'], true);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
+    $xlsx->addRow(['Órdenes del periodo', (int) $totales['total_ordenes']]);
+    $xlsx->addRow(['Movimientos de refacciones', (int) $totales['total_movimientos_refacciones']]);
+    $xlsx->addRow(['Costo total en refacciones', round((float) $totales['costo_total_refacciones'], 2)]);
+    $prom_orden = ((int) $totales['total_ordenes'] > 0) ? round((float) $totales['costo_total_refacciones'] / (int) $totales['total_ordenes'], 2) : 0;
+    $xlsx->addRow(['Costo promedio por orden', $prom_orden]);
+    $xlsx->addRow(['Préstamos de herramientas', (int) $totales['total_prestamos']]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $p_desde . ' a ' . $p_hasta . ')'], true);
+    $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
+    $cmp = function ($cur, $prev) {
+        $cur = (float) $cur; $prev = (float) $prev;
+        return [round($cur, 2), round($prev, 2), $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) . '%' : 'n/d'];
+    };
+    $xlsx->addRow(array_merge(['Órdenes'],               $cmp($totales['total_ordenes'],                 $totales_prev['total_ordenes'])));
+    $xlsx->addRow(array_merge(['Movimientos refacciones'], $cmp($totales['total_movimientos_refacciones'], $totales_prev['total_movimientos_refacciones'])));
+    $xlsx->addRow(array_merge(['Costo refacciones'],     $cmp($totales['costo_total_refacciones'],       $totales_prev['costo_total_refacciones'])));
+    $xlsx->addRow(array_merge(['Préstamos'],             $cmp($totales['total_prestamos'],               $totales_prev['total_prestamos'])));
+
+    // Refacciones
+    $xlsx->addSheet('Refacciones');
+    $xlsx->addHeaderRow(['REFACCIONES MÁS CONSUMIDAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Nombre', 'Categoría', 'Veces usada', 'Unidades', 'Unidad', 'Costo total'], true);
+    foreach ($top_refacciones as $r) {
+        $xlsx->addRow([$r['codigo'], $r['nombre'], $r['categoria'] ?? '', (int) $r['veces_usada'],
+            round((float) $r['cantidad_total'], 2), $r['unidad_medida'], round((float) $r['costo_total'], 2)]);
+    }
+
+    // Equipos caros
+    $xlsx->addSheet('Equipos caros');
+    $xlsx->addHeaderRow(['EQUIPOS MÁS CAROS DE MANTENER'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Equipo', 'Órdenes', 'Líneas refacc.', 'Unidades', 'Costo total'], true);
+    foreach ($costo_por_equipo as $e) {
+        $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], (int) $e['num_ordenes'],
+            (int) $e['lineas_refacciones'], round((float) $e['unidades_total'], 2), round((float) $e['costo_total'], 2)]);
+    }
+
+    // Disciplinas
+    $xlsx->addSheet('Disciplinas');
+    $xlsx->addHeaderRow(['DISTRIBUCIÓN POR DISCIPLINA'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Categoría', 'Órdenes', 'Costo refacciones'], true);
+    foreach ($costo_por_categoria as $c) {
+        $xlsx->addRow([$c['categoria_nombre'] ?? '— Sin categoría —', (int) $c['num_ordenes'], round((float) $c['costo_refacciones'], 2)]);
+    }
+
+    // Tendencia
+    $xlsx->addSheet('Tendencia');
+    $xlsx->addHeaderRow(['TENDENCIA MENSUAL (ÚLTIMOS 12 MESES)'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Mes', 'Órdenes', 'Líneas', 'Unidades', 'Costo total'], true);
+    foreach ($costo_mensual as $m) {
+        $xlsx->addRow([date('Y-m', strtotime($m['mes'] . '-01')), (int) $m['ordenes'], (int) $m['lineas'],
+            round((float) $m['unidades'], 2), round((float) $m['costo_total'], 2)]);
+    }
+
+    // Fallas
+    $xlsx->addSheet('Equipos con fallas');
+    $xlsx->addHeaderRow(['EQUIPOS CON MÁS FALLAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Equipo', 'Sucursal', 'Fallas', 'Resueltas', 'Horas prom. resolución'], true);
+    foreach ($equipos_problematicos as $e) {
+        $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], $e['sucursal_codigo'], (int) $e['num_incidencias'],
+            (int) $e['resueltas'], !empty($e['horas_promedio_resolucion']) ? round((float) $e['horas_promedio_resolucion'], 1) : '']);
+    }
+
+    // MTBF
+    $xlsx->addSheet('MTBF');
+    $xlsx->addHeaderRow(['MTBF - TIEMPO MEDIO ENTRE FALLAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Equipo', 'Núm. fallas', 'Primera falla', 'Última falla', 'MTBF (días)'], true);
+    foreach ($mtbf_equipos as $m) {
+        $xlsx->addRow([$m['codigo_inventario'], $m['equipo_nombre'], (int) $m['num_fallas'],
+            date('Y-m-d', strtotime($m['primera_falla'])), date('Y-m-d', strtotime($m['ultima_falla'])),
+            !empty($m['mtbf_dias']) ? round((float) $m['mtbf_dias'], 1) : '']);
+    }
+
+    // Herramientas
+    $xlsx->addSheet('Herramientas');
+    $xlsx->addHeaderRow(['HERRAMIENTAS MÁS PRESTADAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Herramienta', 'Tipo', 'Estado', 'Préstamos', 'Daños', 'Extravíos'], true);
+    foreach ($herramientas_top as $h) {
+        $xlsx->addRow([$h['codigo'], $h['nombre'], $h['tipo'] ?? '', $h['estado'], (int) $h['num_prestamos'],
+            (int) $h['prestamos_con_dano'], (int) $h['extravios']]);
+    }
+
+    // Préstamos por técnico
+    $xlsx->addSheet('Préstamos técnico');
+    $xlsx->addHeaderRow(['PRÉSTAMOS POR TÉCNICO'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Técnico', 'Total', 'Activos', 'Devueltos', 'Con daño', 'Extraviados', 'Vencidos'], true);
+    foreach ($prestamos_por_tecnico as $t) {
+        $xlsx->addRow([$t['nombre_completo'], (int) $t['total_prestamos'], (int) $t['activos'], (int) $t['devueltos'],
+            (int) $t['con_dano'], (int) $t['extraviados'], (int) $t['vencidos']]);
+    }
+
+    // Componentes
+    $xlsx->addSheet('Componentes');
+    $xlsx->addHeaderRow(['COMPONENTES EN MAL ESTADO O CRÍTICOS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Componente', 'Tipo', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Próxima revisión'], true);
+    foreach ($componentes_problema as $c) {
+        $xlsx->addRow([$c['componente_nombre'], $c['tipo'] ?? '', $c['equipo_nombre'], $c['sucursal_codigo'],
+            $c['estado'], $c['criticidad'], !empty($c['proxima_revision']) ? date('Y-m-d', strtotime($c['proxima_revision'])) : '']);
+    }
+
+    // Próximas revisiones
+    $xlsx->addSheet('Próx. revisiones');
+    $xlsx->addHeaderRow(['PRÓXIMAS REVISIONES (60 DÍAS)'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Componente', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Fecha revisión', 'Días restantes'], true);
+    foreach ($componentes_vencer as $c) {
+        $xlsx->addRow([$c['componente_nombre'], $c['equipo_nombre'], $c['sucursal_codigo'], $c['estado'], $c['criticidad'],
+            date('Y-m-d', strtotime($c['proxima_revision'])), (int) $c['dias_restantes']]);
+    }
+
+    // Medidores
+    $xlsx->addSheet('Medidores');
+    $xlsx->addHeaderRow(['CONSUMOS DE SERVICIOS (MEDIDORES)'], true);
+    $xlsx->addRow(['Costo estimado total', round((float) $med_resumen['costo_total'], 2)]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Tipo', 'Unidad', 'Lecturas', 'Consumo total', 'Costo estimado'], true);
+    foreach ($med_por_tipo as $t) {
+        $xlsx->addRow([$t['nombre'], $t['unidad'], (int) $t['num_lecturas'],
+            round((float) $t['consumo_total'], 3), round((float) $t['costo_total'], 2)]);
+    }
+
+    $xlsx->download('reporte_mantenimiento_' . date('Ymd_His') . '.xlsx');
+    exit;
+}
+
 $titulo_pagina = 'Reportes de mantenimiento';
 $pagina_activa = 'reportes_mant';
 require_once __DIR__ . '/config/header.php';
 ?>
 
-<div class="animate-fade-in space-y-4">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+    .solo-print { display: none; }
+    body.modo-pdf .no-print { display:none !important; }
+    body.modo-pdf .solo-print { display:block !important; }
+    body.modo-pdf main, body.modo-pdf .overflow-hidden, body.modo-pdf .overflow-y-auto, body.modo-pdf .overflow-x-auto { overflow:visible !important; height:auto !important; max-height:none !important; }
+    @media print {
+        @page { size: A4 portrait; margin: 11mm; }
+        .no-print { display:none !important; }
+        .solo-print { display:block !important; }
+        aside, header.h-16 { display:none !important; }
+        html, body { background:#fff !important; height:auto !important; overflow:visible !important; }
+        main, .overflow-hidden, .overflow-y-auto, .overflow-x-auto { overflow:visible !important; height:auto !important; max-height:none !important; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .rounded-xl, table, tr, thead, tfoot, canvas { break-inside: avoid; }
+        .grid { display:block !important; }
+        .grid > * { margin-bottom: 10px; }
+        a { color: inherit !important; text-decoration: none !important; }
+    }
+</style>
+
+<div id="rep-area" class="animate-fade-in space-y-4">
+
+    <!-- Encabezado para impresión / PDF -->
+    <div class="solo-print" style="margin-bottom:14px;">
+        <table style="width:100%;border-bottom:2px solid #E94E1B;padding-bottom:6px;">
+            <tr>
+                <td style="text-align:left;vertical-align:top;">
+                    <div style="font-size:18px;font-weight:800;color:#18181b;">Reporte de mantenimiento</div>
+                    <div style="font-size:12px;color:#52525b;margin-top:2px;">Del <?= e($f_desde) ?> al <?= e($f_hasta) ?> &middot; <?= e($suc_label) ?></div>
+                </td>
+                <td style="text-align:right;vertical-align:top;font-size:11px;color:#52525b;">
+                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; Carnes Bacal</div>
+                    <div>Generado: <?= date('d/m/Y H:i') ?></div>
+                    <?php if ($rep_user): ?><div>Por: <?= e($rep_user) ?></div><?php endif; ?>
+                </td>
+            </tr>
+        </table>
+    </div>
 
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-3">
@@ -472,10 +704,20 @@ require_once __DIR__ . '/config/header.php';
             <p class="text-xs text-zinc-500 mt-0.5">Análisis específico del área: refacciones, costos, equipos, herramientas.</p>
         </div>
 
-        <div class="flex items-center gap-2">
-            <a href="<?= url('reportes_mantenimiento.php?' . http_build_query(['desde' => $f_desde, 'hasta' => $f_hasta, 'sucursal_id' => $f_sucursal, 'exportar' => 'csv'])) ?>"
+        <div class="flex items-center gap-2 no-print">
+            <button onclick="window.print()" class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-sm font-medium text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
+            </button>
+            <button onclick="descargarPDF()" class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-sm font-medium text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="file-down" class="w-4 h-4"></i> PDF
+            </button>
+            <a href="<?= url('reportes_mantenimiento.php?' . http_build_query(['desde' => $f_desde, 'hasta' => $f_hasta, 'sucursal_id' => $f_sucursal, 'exportar' => 'xlsx'])) ?>"
                class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center gap-1.5">
-                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Exportar a Excel
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
+            <a href="<?= url('reportes_mantenimiento.php?' . http_build_query(['desde' => $f_desde, 'hasta' => $f_hasta, 'sucursal_id' => $f_sucursal, 'exportar' => 'csv'])) ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-sm font-medium text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="download" class="w-4 h-4"></i> CSV
             </a>
             <a href="<?= url('reportes/reportes.php') ?>"
                class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
@@ -516,6 +758,22 @@ require_once __DIR__ . '/config/header.php';
                 Aplicar
             </button>
         </form>
+        <div class="flex flex-wrap gap-1.5 mt-2 no-print">
+            <?php
+            $presets = [
+                'Mes actual'   => [date('Y-m-01'), date('Y-m-d')],
+                'Mes anterior' => [date('Y-m-01', strtotime('first day of last month')), date('Y-m-t', strtotime('last day of last month'))],
+                '90 días'      => [date('Y-m-d', strtotime('-90 days')), date('Y-m-d')],
+                'Este año'     => [date('Y-01-01'), date('Y-12-31')],
+            ];
+            foreach ($presets as $lbl => $rango):
+                [$pd, $ph] = $rango;
+                $activo = ($f_desde === $pd && $f_hasta === $ph);
+            ?>
+            <a href="<?= url('reportes_mantenimiento.php?' . http_build_query(['desde' => $pd, 'hasta' => $ph, 'sucursal_id' => $f_sucursal])) ?>"
+               class="px-2.5 py-1 rounded-lg border text-xs font-semibold <?= $activo ? 'bg-bacal-700 text-white border-bacal-700' : 'border-zinc-300 text-zinc-600 hover:bg-zinc-50' ?>"><?= $lbl ?></a>
+            <?php endforeach; ?>
+        </div>
     </div>
 
     <!-- KPIs generales del periodo -->
@@ -523,18 +781,48 @@ require_once __DIR__ . '/config/header.php';
         <div class="bg-white rounded-xl border border-zinc-200 p-4">
             <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Órdenes del periodo</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900"><?= (int) $totales['total_ordenes'] ?></div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $totales['total_ordenes'], (float) $totales_prev['total_ordenes'], true) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 p-4">
             <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Movimientos de refacciones</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900"><?= (int) $totales['total_movimientos_refacciones'] ?></div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $totales['total_movimientos_refacciones'], (float) $totales_prev['total_movimientos_refacciones'], true) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 p-4">
             <div class="text-[10px] text-emerald-700 uppercase tracking-wider font-bold">Costo en refacciones</div>
             <div class="font-display text-2xl font-extrabold text-emerald-700">$<?= number_format($totales['costo_total_refacciones'], 0) ?></div>
+            <?php $prom_orden = ((int) $totales['total_ordenes'] > 0) ? (float) $totales['costo_total_refacciones'] / (int) $totales['total_ordenes'] : 0; ?>
+            <div class="text-[10px] text-zinc-400 mt-0.5">Prom. $<?= number_format($prom_orden, 0) ?> / orden</div>
+            <div class="text-[10px] mt-0.5"><?= $delta_html((float) $totales['costo_total_refacciones'], (float) $totales_prev['costo_total_refacciones']) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 p-4">
             <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Préstamos de herramientas</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900"><?= (int) $totales['total_prestamos'] ?></div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $totales['total_prestamos'], (float) $totales_prev['total_prestamos'], true) ?></div>
+        </div>
+    </div>
+
+    <!-- Gráficas -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2 bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-3 flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4 text-bacal-700"></i> Tendencia mensual (12 meses)
+            </h3>
+            <?php if (!empty($costo_mensual)): ?>
+            <div class="h-64"><canvas id="chartTendencia"></canvas></div>
+            <?php else: ?>
+            <div class="h-64 flex items-center justify-center text-sm text-zinc-400">Sin datos históricos aún.</div>
+            <?php endif; ?>
+        </div>
+        <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
+            <h3 class="font-display text-base font-bold text-zinc-900 mb-3 flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-bacal-700"></i> Costo por disciplina
+            </h3>
+            <?php if (array_sum($disc_costo) > 0): ?>
+            <div class="h-64"><canvas id="chartDisciplina"></canvas></div>
+            <?php else: ?>
+            <div class="h-64 flex items-center justify-center text-sm text-zinc-400">Sin costo de refacciones en el periodo.</div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -552,13 +840,13 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($top_refacciones)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Refacción</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Usos</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Unidades</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Costo</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Usos</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Unidades</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Costo</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -580,6 +868,14 @@ require_once __DIR__ . '/config/header.php';
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200 font-semibold text-zinc-800">
+                    <tr>
+                        <td class="px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Totales</td>
+                        <td class="px-3 py-2 text-right text-xs"><?= array_sum(array_map(fn($x) => (int) $x['veces_usada'], $top_refacciones)) ?></td>
+                        <td class="px-3 py-2 text-right text-[10px] text-zinc-400">varias uds.</td>
+                        <td class="px-3 py-2 text-right text-xs text-emerald-700">$<?= number_format(array_sum(array_map(fn($x) => (float) $x['costo_total'], $top_refacciones)), 0) ?></td>
+                    </tr>
+                </tfoot>
             </table>
             <?php endif; ?>
         </div>
@@ -596,12 +892,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($costo_por_equipo)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Equipo</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Órdenes</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Costo</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Órdenes</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Costo</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -619,6 +915,13 @@ require_once __DIR__ . '/config/header.php';
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200 font-semibold text-zinc-800">
+                    <tr>
+                        <td class="px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Totales</td>
+                        <td class="px-3 py-2 text-right text-xs"><?= array_sum(array_map(fn($x) => (int) $x['num_ordenes'], $costo_por_equipo)) ?></td>
+                        <td class="px-3 py-2 text-right text-xs text-emerald-700">$<?= number_format(array_sum(array_map(fn($x) => (float) $x['costo_total'], $costo_por_equipo)), 0) ?></td>
+                    </tr>
+                </tfoot>
             </table>
             <?php endif; ?>
         </div>
@@ -635,12 +938,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($costo_por_categoria)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Categoría</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Órdenes</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Costo refacciones</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Órdenes</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Costo refacciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -675,13 +978,13 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($costo_mensual)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos históricos aún.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Mes</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Órdenes</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Unidades</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Costo</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Órdenes</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Unidades</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Costo</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -696,6 +999,14 @@ require_once __DIR__ . '/config/header.php';
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200 font-semibold text-zinc-800">
+                    <tr>
+                        <td class="px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500">Totales (12m)</td>
+                        <td class="px-3 py-2 text-right text-xs"><?= array_sum(array_map(fn($x) => (int) $x['ordenes'], $costo_mensual)) ?></td>
+                        <td class="px-3 py-2 text-right text-xs"><?= number_format(array_sum(array_map(fn($x) => (float) $x['unidades'], $costo_mensual)), 0) ?></td>
+                        <td class="px-3 py-2 text-right text-xs text-emerald-700">$<?= number_format(array_sum(array_map(fn($x) => (float) $x['costo_total'], $costo_mensual)), 0) ?></td>
+                    </tr>
+                </tfoot>
             </table>
             <?php endif; ?>
         </div>
@@ -712,12 +1023,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($equipos_problematicos)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Equipo</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Fallas</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Hrs prom.</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Fallas</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Hrs prom.</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -753,12 +1064,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($mtbf_equipos)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Necesitas equipos con 2+ fallas en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Equipo</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Fallas</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">MTBF</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Fallas</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">MTBF</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -797,12 +1108,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($herramientas_top)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Herramienta</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Préstamos</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Daños</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Préstamos</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Daños</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -844,13 +1155,13 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($prestamos_por_tecnico)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin datos en el periodo.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Técnico</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Total</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Activos</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Vencidos</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Total</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Activos</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Vencidos</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -885,7 +1196,7 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($componentes_problema)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin componentes problemáticos registrados. 🎉</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Componente</th>
@@ -945,12 +1256,12 @@ require_once __DIR__ . '/config/header.php';
             <?php if (empty($componentes_vencer)): ?>
             <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin revisiones programadas en los próximos 60 días.</div>
             <?php else: ?>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-100">
                     <tr>
                         <th class="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Componente</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Fecha</th>
-                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Días</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="fecha">Fecha</th>
+                        <th class="px-3 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Días</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -963,8 +1274,8 @@ require_once __DIR__ . '/config/header.php';
                         <div class="font-semibold text-xs text-zinc-900"><?= e($c['componente_nombre']) ?></div>
                         <div class="text-[10px] text-zinc-500"><?= e($c['equipo_nombre']) ?> · <?= e($c['sucursal_codigo']) ?></div>
                     </td>
-                    <td class="px-3 py-2 text-right text-xs"><?= e(date('d/M/Y', strtotime($c['proxima_revision']))) ?></td>
-                    <td class="px-3 py-2 text-right text-xs <?= $color ?>">
+                    <td class="px-3 py-2 text-right text-xs" data-orden="<?= date('Y-m-d', strtotime($c['proxima_revision'])) ?>"><?= e(date('d/M/Y', strtotime($c['proxima_revision']))) ?></td>
+                    <td class="px-3 py-2 text-right text-xs <?= $color ?>" data-orden="<?= $dias ?>">
                         <?= $dias < 0 ? 'VENCIDO ' . abs($dias) . 'd' : $dias . 'd' ?>
                     </td>
                 </tr>
@@ -1013,13 +1324,13 @@ require_once __DIR__ . '/config/header.php';
         <?php if (empty($med_por_tipo)): ?>
         <div class="px-5 py-10 text-center text-xs text-zinc-500">Sin lecturas con consumo en el periodo.</div>
         <?php else: ?>
-        <table class="w-full text-sm">
+        <table class="w-full text-sm js-tabla-orden">
             <thead class="bg-zinc-50 border-b border-zinc-100">
                 <tr>
                     <th class="px-4 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Servicio</th>
-                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Lecturas</th>
-                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Consumo total</th>
-                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Costo estimado</th>
+                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Lecturas</th>
+                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Consumo total</th>
+                    <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Costo estimado</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100">
@@ -1040,10 +1351,76 @@ require_once __DIR__ . '/config/header.php';
                 </tr>
                 <?php endforeach; ?>
             </tbody>
+            <tfoot class="bg-zinc-50 border-t border-zinc-200 font-semibold text-zinc-800">
+                <tr>
+                    <td class="px-4 py-2.5 text-[10px] uppercase tracking-wider text-zinc-500">Totales</td>
+                    <td class="px-4 py-2.5 text-right text-xs"><?= array_sum(array_map(fn($x) => (int) $x['num_lecturas'], $med_por_tipo)) ?></td>
+                    <td class="px-4 py-2.5 text-right text-[10px] text-zinc-400">varias uds.</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-emerald-700">$<?= number_format(array_sum(array_map(fn($x) => (float) $x['costo_total'], $med_por_tipo)), 0) ?></td>
+                </tr>
+            </tfoot>
         </table>
         <?php endif; ?>
     </div>
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var money = function (v) { return '$' + Number(v).toLocaleString('es-MX', { maximumFractionDigits: 0 }); };
+
+    var ctxT = document.getElementById('chartTendencia');
+    if (ctxT) {
+        new Chart(ctxT, {
+            data: {
+                labels: <?= json_encode($mes_labels) ?>,
+                datasets: [
+                    { type: 'bar',  label: 'Costo refacciones', data: <?= json_encode($mes_costo) ?>,   backgroundColor: '#E94E1B', borderRadius: 4, yAxisID: 'y' },
+                    { type: 'line', label: 'Órdenes',           data: <?= json_encode($mes_ordenes) ?>, borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.3, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    y:  { position: 'left',  ticks: { callback: function (v) { return money(v); } } },
+                    y1: { position: 'right', grid: { display: false }, ticks: { precision: 0 } }
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                    tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + (c.dataset.yAxisID === 'y' ? money(c.raw) : c.raw); } } }
+                }
+            }
+        });
+    }
+
+    var ctxD = document.getElementById('chartDisciplina');
+    if (ctxD) {
+        new Chart(ctxD, {
+            type: 'doughnut',
+            data: { labels: <?= json_encode($disc_labels) ?>, datasets: [{ data: <?= json_encode($disc_costo) ?>, backgroundColor: <?= json_encode($disc_colors) ?>, borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '60%',
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: function (c) { return c.label + ': ' + money(c.raw); } } } } }
+        });
+    }
+});
+
+function descargarPDF() {
+    var el = document.getElementById('rep-area');
+    if (typeof html2pdf === 'undefined' || !el) { window.print(); return; }
+    document.body.classList.add('modo-pdf');
+    var opt = {
+        margin:      [8, 6, 10, 6],
+        filename:    <?= json_encode($pdf_filename) ?>,
+        image:       { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0 },
+        jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:   { mode: ['css', 'legacy'], avoid: ['tr', 'thead', 'canvas', '.rounded-xl'] }
+    };
+    html2pdf().set(opt).from(el).save()
+        .then(function () { document.body.classList.remove('modo-pdf'); })
+        .catch(function () { document.body.classList.remove('modo-pdf'); window.print(); });
+}
+</script>
 
 <?php require_once __DIR__ . '/config/footer.php'; ?>

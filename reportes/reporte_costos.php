@@ -28,6 +28,7 @@ $agrupar = (string) input('agrupar', 'mes');
 if (!in_array($agrupar, ['dia', 'semana', 'mes'], true)) $agrupar = 'mes';
 
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // ----------------------------------------------------------------------------
 // Cargar datos
@@ -46,6 +47,36 @@ $flota_total = 0.0;
 foreach ($prov_flota as $fp) { $flota_total += (float) $fp['total']; }
 $por_sucursal= $sucursal_filtro ? [] : costos_por_sucursal($periodo['desde'], $periodo['hasta']);
 
+// Etiqueta de sucursal y datos para encabezados / exportación (impresión y PDF).
+$suc_label = 'Todas las sucursales';
+if ($sucursal_filtro) {
+    foreach ($sucursales_lista as $sl) {
+        if ((int) $sl['id'] === (int) $sucursal_filtro) { $suc_label = $sl['nombre']; break; }
+    }
+    if ($suc_label === 'Todas las sucursales') {
+        $srow = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $sucursal_filtro]);
+        if ($srow) $suc_label = $srow['nombre'];
+    }
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'reporte_costos_' . date('Ymd_His') . '.pdf';
+
+// Comparativa contra el periodo anterior (misma duración, inmediatamente antes).
+$prev_hasta   = date('Y-m-d', strtotime($periodo['desde'] . ' -1 day'));
+$dur_dias     = (int) (new DateTime($periodo['hasta']))->diff(new DateTime($periodo['desde']))->days;
+$prev_desde   = date('Y-m-d', strtotime($prev_hasta . ' -' . $dur_dias . ' days'));
+$resumen_prev = costos_resumen_periodo($prev_desde, $prev_hasta, $where_sucursal, $params_sucursal);
+
+$delta_html = function (float $cur, float $prev, bool $neutral = false): string {
+    if ($prev <= 0) return $cur > 0 ? '<span class="text-zinc-400">sin base previa</span>' : '';
+    $d = ($cur - $prev) / $prev * 100;
+    if (abs($d) < 0.1) return '<span class="text-zinc-400">igual que el anterior</span>';
+    $up = $d > 0;
+    $cls = $neutral ? 'text-zinc-500' : ($up ? 'text-red-600' : 'text-emerald-600');
+    return '<span class="' . $cls . ' font-semibold">' . ($up ? '&#9650;' : '&#9660;') . ' '
+        . number_format(abs($d), 1) . '% vs anterior</span>';
+};
+
 // ----------------------------------------------------------------------------
 // Exportación CSV
 // ----------------------------------------------------------------------------
@@ -54,30 +85,35 @@ if ($es_exportacion) {
     csv_fila(['REPORTE DE COSTOS DE MANTENIMIENTO']);
     csv_fila(['Período:', $periodo['etiqueta']]);
     csv_fila(['Generado:', date('Y-m-d H:i')]);
+    csv_fila(['Sucursal:', $suc_label]);
     csv_fila(['']);
 
     csv_fila(['RESUMEN']);
-    csv_fila(['Costo total', number_format($resumen['total'], 2)]);
-    csv_fila(['Costo externo (proveedores)', number_format($resumen['externo'], 2)]);
-    csv_fila(['  Mano de obra', number_format($resumen['mano_obra'], 2)]);
-    csv_fila(['  Materiales proveedor', number_format($resumen['materiales'], 2)]);
-    csv_fila(['Costo interno (refacciones)', number_format($resumen['interno'], 2)]);
+    csv_fila(['Costo total', number_format($resumen['total'], 2, '.', '')]);
+    csv_fila(['Costo externo (proveedores)', number_format($resumen['externo'], 2, '.', '')]);
+    csv_fila(['  Mano de obra', number_format($resumen['mano_obra'], 2, '.', '')]);
+    csv_fila(['  Materiales proveedor', number_format($resumen['materiales'], 2, '.', '')]);
+    csv_fila(['Costo interno (refacciones)', number_format($resumen['interno'], 2, '.', '')]);
+    csv_fila(['Gasto flotilla (mantenimiento de vehículos)', number_format($flota_total, 2, '.', '')]);
+    csv_fila(['TOTAL GENERAL (mantenimiento + flotilla)', number_format((float) $resumen['total'] + $flota_total, 2, '.', '')]);
     csv_fila(['Incidencias en el período', $resumen['num_total']]);
     csv_fila(['  Internas', $resumen['num_total'] - $resumen['con_proveedor']]);
     csv_fila(['  Externas (con proveedor)', $resumen['con_proveedor']]);
     csv_fila(['Incidencias con costo', $resumen['con_costo']]);
     csv_fila(['']);
 
-    csv_fila(['INCIDENCIAS MÁS CARAS']);
-    csv_fila(['Folio', 'Título', 'Sucursal', 'Proveedor', 'Mano obra', 'Materiales', 'Refacciones', 'Total']);
-    foreach ($ranking_inc as $r) {
+    $inc_export = costos_ranking_incidencias($periodo['desde'], $periodo['hasta'], 100000, $where_sucursal, $params_sucursal);
+    csv_fila(['INCIDENCIAS CON COSTO (DETALLE COMPLETO)', count($inc_export) . ' incidencias']);
+    csv_fila(['Fecha', 'Folio', 'Título', 'Sucursal', 'Proveedor', 'Mano obra', 'Materiales', 'Refacciones', 'Total']);
+    foreach ($inc_export as $r) {
         csv_fila([
+            date('Y-m-d', strtotime($r['fecha_evento'])),
             $r['folio'], $r['titulo'], $r['sucursal_nombre'],
             $r['proveedor_nombre'] ?? $r['proveedor_externo_info'] ?? '',
-            number_format((float) $r['mano_obra'], 2),
-            number_format((float) $r['materiales'], 2),
-            number_format((float) $r['refacciones'], 2),
-            number_format((float) $r['total'], 2),
+            number_format((float) $r['mano_obra'], 2, '.', ''),
+            number_format((float) $r['materiales'], 2, '.', ''),
+            number_format((float) $r['refacciones'], 2, '.', ''),
+            number_format((float) $r['total'], 2, '.', ''),
         ]);
     }
     csv_fila(['']);
@@ -87,9 +123,9 @@ if ($es_exportacion) {
     foreach ($ranking_prov as $p) {
         csv_fila([
             $p['nombre'], $p['servicio'] ?? '', $p['num_incidencias'],
-            number_format((float) $p['mano_obra'], 2),
-            number_format((float) $p['materiales'], 2),
-            number_format((float) $p['total'], 2),
+            number_format((float) $p['mano_obra'], 2, '.', ''),
+            number_format((float) $p['materiales'], 2, '.', ''),
+            number_format((float) $p['total'], 2, '.', ''),
         ]);
     }
 
@@ -101,8 +137,8 @@ if ($es_exportacion) {
             $reg = (int) $pf['registros'];
             csv_fila([
                 $pf['proveedor'], $reg, (int) $pf['vehiculos'],
-                number_format($reg > 0 ? (float) $pf['total'] / $reg : 0, 2),
-                number_format((float) $pf['total'], 2),
+                number_format($reg > 0 ? (float) $pf['total'] / $reg : 0, 2, '.', ''),
+                number_format((float) $pf['total'], 2, '.', ''),
             ]);
         }
     }
@@ -114,12 +150,148 @@ if ($es_exportacion) {
         foreach ($por_sucursal as $s) {
             csv_fila([
                 $s['nombre'], $s['num_incidencias'],
-                number_format((float) $s['externo'], 2),
-                number_format((float) $s['interno'], 2),
-                number_format((float) $s['total'], 2),
+                number_format((float) $s['externo'], 2, '.', ''),
+                number_format((float) $s['interno'], 2, '.', ''),
+                number_format((float) $s['total'], 2, '.', ''),
             ]);
         }
     }
+    exit;
+}
+
+// ----------------------------------------------------------------------------
+// Exportación Excel (.xlsx) multi-hoja
+// ----------------------------------------------------------------------------
+if ($es_xlsx) {
+    require_once __DIR__ . '/../config/xlsx_writer.php';
+    $inc_full  = costos_ranking_incidencias($periodo['desde'], $periodo['hasta'], 100000, $where_sucursal, $params_sucursal);
+    $prov_full = costos_ranking_proveedores($periodo['desde'], $periodo['hasta'], 500, $where_sucursal, $params_sucursal);
+
+    $xlsx = new XlsxWriter();
+    $periodo_label = 'Período: ' . $periodo['etiqueta'];
+
+    // Hoja 1: Resumen + comparativa
+    $xlsx->addSheet('Resumen');
+    $xlsx->addHeaderRow(['REPORTE DE COSTOS DE MANTENIMIENTO'], true);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
+    $xlsx->addRow(['Costo total', round((float) $resumen['total'], 2)]);
+    $xlsx->addRow(['Costo externo (proveedores)', round((float) $resumen['externo'], 2)]);
+    $xlsx->addRow(['  Mano de obra', round((float) $resumen['mano_obra'], 2)]);
+    $xlsx->addRow(['  Materiales proveedor', round((float) $resumen['materiales'], 2)]);
+    $xlsx->addRow(['Costo interno (refacciones)', round((float) $resumen['interno'], 2)]);
+    $xlsx->addRow(['Incidencias en el período', (int) $resumen['num_total']]);
+    $xlsx->addRow(['  Con costo', (int) $resumen['con_costo']]);
+    $xlsx->addRow(['  Con proveedor', (int) $resumen['con_proveedor']]);
+    $xlsx->addRow(['Costo promedio por incidencia con costo', round((float) $resumen['promedio'], 2)]);
+    $xlsx->addRow(['Gasto flotilla (mantenimiento de vehículos)', round((float) $flota_total, 2)]);
+    $xlsx->addRow(['TOTAL GENERAL (mantenimiento + flotilla)', round((float) $resumen['total'] + (float) $flota_total, 2)]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $prev_desde . ' a ' . $prev_hasta . ')'], true);
+    $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
+    $cmp = function ($cur, $prev) {
+        $cur = (float) $cur; $prev = (float) $prev;
+        $var = $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) . '%' : 'n/d';
+        return [round($cur, 2), round($prev, 2), $var];
+    };
+    $xlsx->addRow(array_merge(['Costo total'],           $cmp($resumen['total'],     $resumen_prev['total'])));
+    $xlsx->addRow(array_merge(['Externo (proveedores)'], $cmp($resumen['externo'],   $resumen_prev['externo'])));
+    $xlsx->addRow(array_merge(['Interno (refacciones)'], $cmp($resumen['interno'],   $resumen_prev['interno'])));
+    $xlsx->addRow(array_merge(['Incidencias'],           $cmp($resumen['num_total'], $resumen_prev['num_total'])));
+
+    // Hoja 2: Incidencias con costo (todas)
+    $xlsx->addSheet('Incidencias');
+    $xlsx->addHeaderRow(['INCIDENCIAS CON COSTO (' . count($inc_full) . ')'], true);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Fecha', 'Folio', 'Título', 'Sucursal', 'Atendió', 'Mano obra', 'Materiales', 'Refacciones', 'Mat. comprados', 'MO interna', 'Total'], true);
+    foreach ($inc_full as $r) {
+        $xlsx->addRow([
+            date('Y-m-d', strtotime($r['fecha_evento'])),
+            $r['folio'], $r['titulo'], $r['sucursal_nombre'],
+            $r['proveedor_nombre'] ?: ($r['proveedor_externo_info'] ?: 'Interno'),
+            round((float) $r['mano_obra'], 2),
+            round((float) $r['materiales'], 2),
+            round((float) $r['refacciones'], 2),
+            round((float) $r['materiales_comprados'], 2),
+            round((float) $r['mano_obra_interna'], 2),
+            round((float) $r['total'], 2),
+        ]);
+    }
+    $xlsx->addBlankRow();
+    $xlsx->addRow(['', '', '', '', 'TOTAL',
+        round(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $inc_full)), 2),
+        round(array_sum(array_map(fn($x) => (float) $x['materiales'], $inc_full)), 2),
+        round(array_sum(array_map(fn($x) => (float) $x['refacciones'], $inc_full)), 2),
+        round(array_sum(array_map(fn($x) => (float) $x['materiales_comprados'], $inc_full)), 2),
+        round(array_sum(array_map(fn($x) => (float) $x['mano_obra_interna'], $inc_full)), 2),
+        round(array_sum(array_map(fn($x) => (float) $x['total'], $inc_full)), 2),
+    ]);
+
+    // Hoja 3: Proveedores
+    $xlsx->addSheet('Proveedores');
+    $xlsx->addHeaderRow(['PROVEEDORES CON GASTO (' . count($prov_full) . ')'], true);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Proveedor', 'Servicio', 'Incidencias', 'Mano obra', 'Materiales', 'Total'], true);
+    foreach ($prov_full as $p) {
+        $xlsx->addRow([
+            $p['nombre'], $p['servicio'] ?? '', (int) $p['num_incidencias'],
+            round((float) $p['mano_obra'], 2), round((float) $p['materiales'], 2), round((float) $p['total'], 2),
+        ]);
+    }
+
+    // Hoja 4: Flotilla
+    if (!empty($prov_flota)) {
+        $xlsx->addSheet('Flotilla');
+        $xlsx->addHeaderRow(['PROVEEDORES DE FLOTILLA (MANTENIMIENTO DE VEHÍCULOS)'], true);
+        $xlsx->addRow([$periodo_label]);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Proveedor / Taller', 'Servicios', 'Vehículos', 'Promedio', 'Total'], true);
+        foreach ($prov_flota as $pf) {
+            $reg = (int) $pf['registros'];
+            $xlsx->addRow([
+                $pf['proveedor'], $reg, (int) $pf['vehiculos'],
+                round($reg > 0 ? (float) $pf['total'] / $reg : 0, 2),
+                round((float) $pf['total'], 2),
+            ]);
+        }
+        $xlsx->addBlankRow();
+        $xlsx->addRow(['', '', '', 'TOTAL', round((float) $flota_total, 2)]);
+    }
+
+    // Hoja 5: Por sucursal
+    if (!empty($por_sucursal)) {
+        $xlsx->addSheet('Por sucursal');
+        $xlsx->addHeaderRow(['COSTOS POR SUCURSAL'], true);
+        $xlsx->addRow([$periodo_label]);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Sucursal', 'Incidencias', 'Externo', 'Interno', 'Total'], true);
+        foreach ($por_sucursal as $sx) {
+            $xlsx->addRow([
+                $sx['nombre'], (int) $sx['num_incidencias'],
+                round((float) $sx['externo'], 2), round((float) $sx['interno'], 2), round((float) $sx['total'], 2),
+            ]);
+        }
+    }
+
+    // Hoja 6: Tendencia
+    if (!empty($tendencia)) {
+        $xlsx->addSheet('Tendencia');
+        $xlsx->addHeaderRow(['TENDENCIA DE COSTOS (' . $agrupar . ')'], true);
+        $xlsx->addRow([$periodo_label]);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Período', 'Externo', 'Interno', 'Total'], true);
+        foreach ($tendencia as $t) {
+            $ext = (float) $t['externo']; $int = (float) $t['interno'];
+            $xlsx->addRow([$t['label'], round($ext, 2), round($int, 2), round($ext + $int, 2)]);
+        }
+    }
+
+    $xlsx->download('reporte_costos_' . date('Ymd_His') . '.xlsx');
     exit;
 }
 
@@ -134,11 +306,51 @@ require_once __DIR__ . '/../config/header.php';
 ?>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
-@media print { .no-print { display: none !important; } aside, header.h-16 { display: none !important; } body { background: white !important; } }
+    .solo-print { display: none; }
+    /* Durante la generación del PDF: mostrar encabezado de documento, ocultar controles y liberar overflow */
+    body.modo-pdf .no-print { display: none !important; }
+    body.modo-pdf .solo-print { display: block !important; }
+    body.modo-pdf main,
+    body.modo-pdf .overflow-hidden,
+    body.modo-pdf .overflow-y-auto,
+    body.modo-pdf .overflow-x-auto { overflow: visible !important; height: auto !important; max-height: none !important; }
+
+    @media print {
+        @page { size: A4 portrait; margin: 12mm; }
+        .no-print { display: none !important; }
+        .solo-print { display: block !important; }
+        aside, header.h-16 { display: none !important; }
+        html, body { background: #fff !important; height: auto !important; overflow: visible !important; }
+        main,
+        .overflow-hidden, .overflow-y-auto, .overflow-x-auto {
+            overflow: visible !important; height: auto !important; max-height: none !important;
+        }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .rounded-xl, table, tr, thead, tfoot, canvas { break-inside: avoid; }
+        a { color: inherit !important; text-decoration: none !important; }
+    }
 </style>
 
-<div class="animate-fade-in space-y-5">
+<div id="rep-area" class="animate-fade-in space-y-5">
+
+    <!-- Encabezado para impresión / PDF -->
+    <div class="solo-print" style="margin-bottom:16px;">
+        <table style="width:100%;border-bottom:2px solid #E94E1B;padding-bottom:6px;">
+            <tr>
+                <td style="text-align:left;vertical-align:top;">
+                    <div style="font-size:18px;font-weight:800;color:#18181b;">Reporte de costos de mantenimiento</div>
+                    <div style="font-size:12px;color:#52525b;margin-top:2px;"><?= e($periodo['etiqueta']) ?> &middot; <?= e($suc_label) ?></div>
+                </td>
+                <td style="text-align:right;vertical-align:top;font-size:11px;color:#52525b;">
+                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; Carnes Bacal</div>
+                    <div>Generado: <?= date('d/m/Y H:i') ?></div>
+                    <?php if ($rep_user): ?><div>Por: <?= e($rep_user) ?></div><?php endif; ?>
+                </td>
+            </tr>
+        </table>
+    </div>
 
     <!-- Encabezado -->
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 no-print">
@@ -155,6 +367,13 @@ require_once __DIR__ . '/../config/header.php';
             <button onclick="window.print()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
                 <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
             </button>
+            <button onclick="descargarPDF()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+                <i data-lucide="file-down" class="w-4 h-4"></i> PDF
+            </button>
+            <a href="<?= url('reportes/reporte_costos.php?' . http_build_query(array_merge($_GET, ['exportar' => 'xlsx']))) ?>"
+               class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
             <a href="<?= url('reportes/reporte_costos.php?' . http_build_query(array_merge($_GET, ['exportar' => 'csv']))) ?>"
                class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
                 <i data-lucide="download" class="w-4 h-4"></i> CSV
@@ -217,21 +436,26 @@ require_once __DIR__ . '/../config/header.php';
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Costo total</div>
             <div class="font-display text-3xl font-extrabold text-bacal-700 leading-none"><?= e(fmt_dinero_corto($resumen['total'])) ?></div>
             <div class="text-[10px] text-zinc-400 mt-1.5"><?= e(fmt_dinero($resumen['total'])) ?></div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['total'], (float) $resumen_prev['total']) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Proveedores</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($resumen['externo'])) ?></div>
             <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['pct_externo'] ?>% · MO <?= e(fmt_dinero_corto($resumen['mano_obra'])) ?> + Mat <?= e(fmt_dinero_corto($resumen['materiales'])) ?></div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['externo'], (float) $resumen_prev['externo']) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Refacciones internas</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($resumen['interno'])) ?></div>
             <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['pct_interno'] ?>% del total</div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['interno'], (float) $resumen_prev['interno']) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Incidencias</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= number_format($resumen['num_total']) ?></div>
             <div class="text-[10px] text-zinc-400 mt-1.5"><?= number_format($resumen['num_total'] - $resumen['con_proveedor']) ?> internas · <?= number_format($resumen['con_proveedor']) ?> externas</div>
+            <div class="text-[10px] text-zinc-400 mt-0.5">Prom. <?= e(fmt_dinero($resumen['promedio'])) ?> por incidencia con costo</div>
+            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['num_total'], (float) $resumen_prev['num_total'], true) ?></div>
         </div>
     </div>
 
@@ -276,16 +500,16 @@ require_once __DIR__ . '/../config/header.php';
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin incidencias con costo en el período.</div>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
-                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8" data-no-orden>#</th>
                         <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Incidencia</th>
                         <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Atendió</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mano obra</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Materiales</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Refacc.</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Mano obra</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Materiales</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Refacc.</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Total</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -308,13 +532,22 @@ require_once __DIR__ . '/../config/header.php';
                                 <span class="text-zinc-400 italic">Interno</span>
                             <?php endif; ?>
                         </td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= (float) $r['mano_obra'] > 0 ? e(fmt_dinero((float) $r['mano_obra'])) : '—' ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= (float) $r['materiales'] > 0 ? e(fmt_dinero((float) $r['materiales'])) : '—' ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= (float) $r['refacciones'] > 0 ? e(fmt_dinero((float) $r['refacciones'])) : '—' ?></td>
-                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700"><?= e(fmt_dinero((float) $r['total'])) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600" data-orden="<?= (float) $r['mano_obra'] ?>"><?= (float) $r['mano_obra'] > 0 ? e(fmt_dinero((float) $r['mano_obra'])) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600" data-orden="<?= (float) $r['materiales'] ?>"><?= (float) $r['materiales'] > 0 ? e(fmt_dinero((float) $r['materiales'])) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600" data-orden="<?= (float) $r['refacciones'] ?>"><?= (float) $r['refacciones'] > 0 ? e(fmt_dinero((float) $r['refacciones'])) : '—' ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700" data-orden="<?= (float) $r['total'] ?>"><?= e(fmt_dinero((float) $r['total'])) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200">
+                    <tr>
+                        <td class="px-4 py-2.5" colspan="3"><span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Suma de las <?= count($ranking_inc) ?> mostradas</span></td>
+                        <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $ranking_inc)))) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['materiales'], $ranking_inc)))) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['refacciones'], $ranking_inc)))) ?></td>
+                        <td class="px-4 py-2.5 text-right text-sm font-extrabold text-bacal-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['total'], $ranking_inc)))) ?></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
         <?php endif; ?>
@@ -331,15 +564,15 @@ require_once __DIR__ . '/../config/header.php';
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin gastos a proveedores registrados en el período.</div>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="bg-zinc-50 border-b border-zinc-200">
                     <tr>
-                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
+                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8" data-no-orden>#</th>
                         <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proveedor</th>
-                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Incid.</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mano obra</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Materiales</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total</th>
+                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Incid.</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Mano obra</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Materiales</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Total</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -350,13 +583,22 @@ require_once __DIR__ . '/../config/header.php';
                             <div class="font-semibold text-sm text-zinc-900"><?= e($p['nombre']) ?></div>
                             <?php if ($p['servicio']): ?><div class="text-[10px] text-zinc-400"><?= e($p['servicio']) ?></div><?php endif; ?>
                         </td>
-                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= (int) $p['num_incidencias'] ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= e(fmt_dinero((float) $p['mano_obra'])) ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= e(fmt_dinero((float) $p['materiales'])) ?></td>
-                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700"><?= e(fmt_dinero((float) $p['total'])) ?></td>
+                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700" data-orden="<?= (int) $p['num_incidencias'] ?>"><?= (int) $p['num_incidencias'] ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600" data-orden="<?= (float) $p['mano_obra'] ?>"><?= e(fmt_dinero((float) $p['mano_obra'])) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600" data-orden="<?= (float) $p['materiales'] ?>"><?= e(fmt_dinero((float) $p['materiales'])) ?></td>
+                        <td class="px-4 py-2.5 text-right font-bold text-sm text-bacal-700" data-orden="<?= (float) $p['total'] ?>"><?= e(fmt_dinero((float) $p['total'])) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
+                <tfoot class="bg-zinc-50 border-t border-zinc-200">
+                    <tr>
+                        <td class="px-4 py-2.5" colspan="2"><span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Suma de los <?= count($ranking_prov) ?> mostrados</span></td>
+                        <td class="px-4 py-2.5 text-center text-sm font-bold text-zinc-700"><?= array_sum(array_map(fn($x) => (int) $x['num_incidencias'], $ranking_prov)) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $ranking_prov)))) ?></td>
+                        <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['materiales'], $ranking_prov)))) ?></td>
+                        <td class="px-4 py-2.5 text-right text-sm font-extrabold text-bacal-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['total'], $ranking_prov)))) ?></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
         <?php endif; ?>
@@ -510,6 +752,25 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+</script>
+
+<script>
+function descargarPDF() {
+    var el = document.getElementById('rep-area');
+    if (typeof html2pdf === 'undefined' || !el) { window.print(); return; }
+    document.body.classList.add('modo-pdf');
+    var opt = {
+        margin:      [10, 8, 12, 8],
+        filename:    <?= json_encode($pdf_filename) ?>,
+        image:       { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0 },
+        jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:   { mode: ['css', 'legacy'], avoid: ['tr', 'thead', 'canvas'] }
+    };
+    html2pdf().set(opt).from(el).save()
+        .then(function () { document.body.classList.remove('modo-pdf'); })
+        .catch(function () { document.body.classList.remove('modo-pdf'); window.print(); });
+}
 </script>
 
 <?php require_once __DIR__ . '/../config/footer.php'; ?>

@@ -12,6 +12,7 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
+require_once __DIR__ . '/../config/reportes_export.php';
 
 // Resolver filtros
 $periodo = resolver_periodo();
@@ -19,6 +20,7 @@ $periodo = resolver_periodo();
 
 // Si es exportación, no cargar header
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // ============================================================================
 // EXPORTACIÓN CSV
@@ -80,6 +82,73 @@ $comparativa   = !$sucursal_filtro && tiene_permiso('ver_todas_sucursales')
 $max_areas    = !empty($tops_areas) ? max(array_column($tops_areas, 'total')) : 1;
 $max_equipos  = !empty($tops_equipos) ? max(array_column($tops_equipos, 'total')) : 1;
 
+$suc_label = 'Todas las sucursales';
+if ($sucursal_filtro) {
+    foreach ($sucursales_lista as $sl) { if ((int) $sl['id'] === (int) $sucursal_filtro) { $suc_label = $sl['nombre']; break; } }
+    if ($suc_label === 'Todas las sucursales') { $sr = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $sucursal_filtro]); if ($sr) $suc_label = $sr['nombre']; }
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'reporte_mensual_' . date('Ymd_His') . '.pdf';
+
+if ($es_xlsx) {
+    require_once __DIR__ . '/../config/xlsx_writer.php';
+    $xlsx = new XlsxWriter();
+    $xlsx->addSheet('Resumen');
+    $xlsx->addHeaderRow(['REPORTE EJECUTIVO MENSUAL'], true);
+    $xlsx->addRow(['Período: ' . $periodo['etiqueta']]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Métrica', 'Valor'], true);
+    $xlsx->addRow(['Total incidencias', (int) $metricas['total']]);
+    $xlsx->addRow(['Cerradas', (int) $metricas['cerradas']]);
+    $xlsx->addRow(['Abiertas', (int) $metricas['abiertas']]);
+    $xlsx->addRow(['Críticas', (int) $metricas['criticas']]);
+    $xlsx->addRow(['Reincidencias', (int) $metricas['reincidencias']]);
+    $xlsx->addRow(['% Reincidencia', $metricas['pct_reincidencia'] . '%']);
+    $xlsx->addRow(['Tiempo promedio resolución (min)', $metricas['avg_resolucion'] ?? '']);
+    $xlsx->addRow(['SLA cumplido', $metricas['sla_pct'] !== null ? $metricas['sla_pct'] . '%' : '']);
+
+    $xlsx->addSheet('Categorías');
+    $xlsx->addHeaderRow(['DISTRIBUCIÓN POR CATEGORÍA'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Categoría', 'Total'], true);
+    foreach ($por_categoria as $c) { $xlsx->addRow([$c['nombre'], (int) $c['total']]); }
+
+    $xlsx->addSheet('Severidad');
+    $xlsx->addHeaderRow(['DISTRIBUCIÓN POR SEVERIDAD'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Severidad', 'Total'], true);
+    foreach ($por_severidad as $sv) { $xlsx->addRow([$sv['nombre'], (int) $sv['total']]); }
+
+    $xlsx->addSheet('Áreas');
+    $xlsx->addHeaderRow(['TOP ÁREAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Área', 'Total'], true);
+    foreach ($tops_areas as $a) { $xlsx->addRow([$a['nombre'], (int) $a['total']]); }
+
+    $xlsx->addSheet('Equipos');
+    $xlsx->addHeaderRow(['TOP EQUIPOS CON MÁS FALLAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Equipo', 'Tipo', 'Sucursal', 'Fallas'], true);
+    foreach ($tops_equipos as $eq) { $xlsx->addRow([$eq['codigo_inventario'], $eq['nombre'], (string) $eq['tipo'], $eq['sucursal_nombre'], (int) $eq['total']]); }
+
+    if (!empty($comparativa)) {
+        $xlsx->addSheet('Comparativa');
+        $xlsx->addHeaderRow(['COMPARATIVA POR SUCURSAL'], true);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Código', 'Sucursal', 'Total', 'Abiertas', 'Críticas', 'Reincidencias', 'T. resol (min)', 'SLA %'], true);
+        foreach ($comparativa as $sc) {
+            $ev = (int) $sc['sla_cumplido'] + (int) $sc['sla_incumplido'];
+            $pct = $ev > 0 ? round(((int) $sc['sla_cumplido'] / $ev) * 100) : '';
+            $xlsx->addRow([$sc['codigo'], $sc['nombre'], (int) $sc['total'], (int) $sc['abiertas'], (int) $sc['criticas'],
+                (int) $sc['reincidencias'], $sc['avg_resolucion'] ?? '', $pct === '' ? '' : $pct . '%']);
+        }
+    }
+    $xlsx->download('reporte_mensual_' . date('Ymd_His') . '.xlsx');
+    exit;
+}
+
 $titulo_pagina = 'Reporte mensual';
 $pagina_activa = 'reportes';
 require_once __DIR__ . '/../config/header.php';
@@ -87,19 +156,9 @@ require_once __DIR__ . '/../config/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<style>
-/* Estilos optimizados para impresión */
-@media print {
-    .no-print { display: none !important; }
-    aside, header.h-16 { display: none !important; }
-    main { overflow: visible !important; }
-    body { background: white !important; }
-    .print-break { page-break-before: always; }
-    .bg-white { box-shadow: none !important; border: 1px solid #e4e4e7 !important; }
-}
-</style>
+<?php reporte_export_assets(); ?>
 
-<div class="animate-fade-in space-y-5">
+<div id="rep-area" data-pdf="<?= e($pdf_filename) ?>" class="animate-fade-in space-y-5">
 
     <!-- Header con controles -->
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 no-print">
@@ -114,13 +173,15 @@ require_once __DIR__ . '/../config/header.php';
         </div>
 
         <div class="flex items-center gap-2">
-            <button onclick="window.print()"
-                    class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir / PDF
-            </button>
+            <?php reporte_print_button(); ?>
+            <?php reporte_pdf_button(); ?>
+            <a href="<?= url('reportes/reporte_mensual.php?' . http_build_query(array_merge($_GET, ['exportar' => 'xlsx']))) ?>"
+               class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
             <a href="<?= url('reportes/reporte_mensual.php?' . http_build_query(array_merge($_GET, ['exportar' => 'csv']))) ?>"
                class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-                <i data-lucide="download" class="w-4 h-4"></i> Excel/CSV
+                <i data-lucide="download" class="w-4 h-4"></i> CSV
             </a>
         </div>
     </div>
@@ -175,19 +236,7 @@ require_once __DIR__ . '/../config/header.php';
         </div>
     </form>
 
-    <!-- Header de impresión (solo visible al imprimir) -->
-    <div class="hidden print:block">
-        <div class="flex items-center justify-between border-b-2 border-zinc-900 pb-3 mb-4">
-            <div>
-                <div class="font-display text-2xl font-extrabold">Carnes Bacal</div>
-                <div class="text-xs text-zinc-500 uppercase tracking-widest">Reporte Ejecutivo de Sistemas</div>
-            </div>
-            <div class="text-right text-xs">
-                <div class="font-semibold"><?= e($periodo['etiqueta']) ?></div>
-                <div class="text-zinc-500">Generado: <?= date('d/m/Y H:i') ?></div>
-            </div>
-        </div>
-    </div>
+    <?php reporte_doc_header('Reporte ejecutivo mensual', $periodo['etiqueta'] . ' · ' . $suc_label, $rep_user); ?>
 
     <!-- KPIs principales -->
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -313,7 +362,7 @@ require_once __DIR__ . '/../config/header.php';
         <div class="text-xs text-zinc-400 italic text-center py-8">Sin datos</div>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead>
                     <tr class="border-b border-zinc-200">
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase w-8">#</th>
@@ -321,7 +370,7 @@ require_once __DIR__ . '/../config/header.php';
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Equipo</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Tipo</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Sucursal</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Fallas</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Fallas</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -349,16 +398,16 @@ require_once __DIR__ . '/../config/header.php';
         <h3 class="font-display text-base font-bold text-zinc-900 mb-1">Comparativa por sucursal</h3>
         <p class="text-xs text-zinc-500 mb-4">Métricas paralelas del período</p>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead>
                     <tr class="border-b border-zinc-200">
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Sucursal</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Total</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Abiertas</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Críticas</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Reincid.</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">T. resol.</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">SLA</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Total</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Abiertas</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Críticas</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Reincid.</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">T. resol.</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">SLA</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">

@@ -8,11 +8,13 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
+require_once __DIR__ . '/../config/reportes_export.php';
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
 
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // SLA por severidad
 $por_severidad = db_all(
@@ -88,6 +90,14 @@ foreach ($por_severidad as $s) {
 }
 $pct_global = $tot_eval > 0 ? round(($tot_cumpl / $tot_eval) * 100) : null;
 
+$suc_label = 'Todas las sucursales';
+if ($sucursal_filtro) {
+    foreach ($sucursales_lista as $sl) { if ((int) $sl['id'] === (int) $sucursal_filtro) { $suc_label = $sl['nombre']; break; } }
+    if ($suc_label === 'Todas las sucursales') { $sr = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $sucursal_filtro]); if ($sr) $suc_label = $sr['nombre']; }
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'reporte_sla_' . date('Ymd_His') . '.pdf';
+
 if ($es_exportacion) {
     csv_iniciar('reporte_sla_' . date('Ymd_His') . '.csv');
     csv_fila(['ANÁLISIS DE SLA']);
@@ -113,16 +123,56 @@ if ($es_exportacion) {
     exit;
 }
 
+if ($es_xlsx) {
+    require_once __DIR__ . '/../config/xlsx_writer.php';
+    $xlsx = new XlsxWriter();
+    $xlsx->addSheet('Resumen SLA');
+    $xlsx->addHeaderRow(['ANÁLISIS DE SLA'], true);
+    $xlsx->addRow(['Período: ' . $periodo['etiqueta']]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Cumplimiento global: ' . ($pct_global !== null ? $pct_global . '%' : 'n/d')]);
+    $xlsx->addRow(['Incidencias evaluadas: ' . $tot_eval . ' (cumplidas ' . $tot_cumpl . ')']);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Severidad', 'SLA (h)', 'Cerradas', 'Cumplidos', 'Incumplidos', '% Cumplido', 'T. resol. prom (min)'], true);
+    foreach ($por_severidad as $sv) {
+        $xlsx->addRow([$sv['nombre'], (int) $sv['sla_horas'], (int) $sv['total_cerradas'], (int) $sv['cumplidos'],
+            (int) $sv['incumplidos'], $sv['pct_cumplido'] !== null ? $sv['pct_cumplido'] . '%' : '',
+            $sv['avg_resolucion'] !== null ? round((float) $sv['avg_resolucion']) : '']);
+    }
+
+    $xlsx->addSheet('Incumplidas');
+    $xlsx->addHeaderRow(['INCIDENCIAS CON SLA INCUMPLIDO'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Folio', 'Título', 'Severidad', 'Sucursal', 'Área', 'Asignado', 'Excedido (min)'], true);
+    foreach ($sla_incumplidas as $i) {
+        $xlsx->addRow([$i['folio'], $i['titulo'], $i['severidad_nombre'], $i['sucursal_nombre'], $i['area_nombre'],
+            $i['asignado_a_nombre'] ?? '', (int) $i['minutos_excedidos']]);
+    }
+
+    if (!empty($sla_riesgo_actual)) {
+        $xlsx->addSheet('En riesgo (ahora)');
+        $xlsx->addHeaderRow(['INCIDENCIAS ABIERTAS - ESTADO SLA EN TIEMPO REAL'], true);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Folio', 'Título', 'Severidad', 'Sucursal', 'Área', 'Asignado', 'Minutos restantes'], true);
+        foreach ($sla_riesgo_actual as $i) {
+            $xlsx->addRow([$i['folio'], $i['titulo'], $i['severidad_nombre'], $i['sucursal_nombre'], $i['area_nombre'],
+                $i['asignado_a_nombre'] ?? '', (int) $i['minutos_restantes']]);
+        }
+    }
+    $xlsx->download('reporte_sla_' . date('Ymd_His') . '.xlsx');
+    exit;
+}
+
 $titulo_pagina = 'Análisis de SLA';
 $pagina_activa = 'reportes';
 require_once __DIR__ . '/../config/header.php';
 ?>
 
-<style>
-@media print { .no-print { display: none !important; } aside, header.h-16 { display: none !important; } body { background: white !important; } }
-</style>
+<?php reporte_export_assets(); ?>
 
-<div class="animate-fade-in space-y-5">
+<div id="rep-area" data-pdf="<?= e($pdf_filename) ?>" class="animate-fade-in space-y-5">
+
+    <?php reporte_doc_header('Análisis de SLA', $periodo['etiqueta'] . ' · ' . $suc_label . ' · Cumplimiento ' . ($pct_global !== null ? $pct_global . '%' : 'n/d'), $rep_user); ?>
 
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 no-print">
         <div class="flex items-center gap-3">
@@ -135,9 +185,12 @@ require_once __DIR__ . '/../config/header.php';
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <button onclick="window.print()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
-            </button>
+            <?php reporte_print_button(); ?>
+            <?php reporte_pdf_button(); ?>
+            <a href="<?= url('reportes/reporte_sla.php?' . http_build_query(array_merge($_GET, ['exportar' => 'xlsx']))) ?>"
+               class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
             <a href="<?= url('reportes/reporte_sla.php?' . http_build_query(array_merge($_GET, ['exportar' => 'csv']))) ?>"
                class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
                 <i data-lucide="download" class="w-4 h-4"></i> CSV
@@ -297,7 +350,7 @@ require_once __DIR__ . '/../config/header.php';
         </h3>
         <p class="text-xs text-zinc-500 mb-4">Top 30 incidencias que tardaron más en cerrarse que su SLA permitía</p>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="border-b border-zinc-200">
                     <tr>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Folio</th>
@@ -305,7 +358,7 @@ require_once __DIR__ . '/../config/header.php';
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Severidad</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Sucursal</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Asignado</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Excedido por</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Excedido por</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -320,7 +373,7 @@ require_once __DIR__ . '/../config/header.php';
                         <td class="px-2 py-2"><?= badge($i['severidad_nombre'], $i['severidad_color']) ?></td>
                         <td class="px-2 py-2 text-xs text-zinc-700"><?= e($i['sucursal_nombre']) ?></td>
                         <td class="px-2 py-2 text-xs text-zinc-700"><?= e($i['asignado_a_nombre'] ?? '—') ?></td>
-                        <td class="px-2 py-2 text-right">
+                        <td class="px-2 py-2 text-right" data-orden="<?= (int) $i['minutos_excedidos'] ?>">
                             <span class="font-bold text-bacal-700"><?= e(fmt_duracion((int) $i['minutos_excedidos'])) ?></span>
                         </td>
                     </tr>

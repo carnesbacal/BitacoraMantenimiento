@@ -13,11 +13,13 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
+require_once __DIR__ . '/../config/reportes_export.php';
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
 
 $es_exportacion = (input('exportar') === 'csv');
+$es_xlsx        = (input('exportar') === 'xlsx');
 
 // ============================================================================
 // EQUIPOS RECURRENTES
@@ -102,6 +104,14 @@ $tot_general = (int) ($tot_row['total'] ?? 0);
 $tot_reinc = (int) ($tot_row['reinc'] ?? 0);
 $pct_reinc = $tot_general > 0 ? round(($tot_reinc / $tot_general) * 100, 1) : 0;
 
+$suc_label = 'Todas las sucursales';
+if ($sucursal_filtro) {
+    foreach ($sucursales_lista as $sl) { if ((int) $sl['id'] === (int) $sucursal_filtro) { $suc_label = $sl['nombre']; break; } }
+    if ($suc_label === 'Todas las sucursales') { $sr = db_one("SELECT nombre FROM sucursales WHERE id = :id", ['id' => $sucursal_filtro]); if ($sr) $suc_label = $sr['nombre']; }
+}
+$rep_user     = usuario_actual()['nombre'] ?? '';
+$pdf_filename = 'reincidencias_' . date('Ymd_His') . '.pdf';
+
 // ============================================================================
 // EXPORTACIÓN CSV
 // ============================================================================
@@ -139,16 +149,59 @@ if ($es_exportacion) {
     exit;
 }
 
+if ($es_xlsx) {
+    require_once __DIR__ . '/../config/xlsx_writer.php';
+    $xlsx = new XlsxWriter();
+    $xlsx->addSheet('Resumen');
+    $xlsx->addHeaderRow(['REPORTE DE REINCIDENCIAS'], true);
+    $xlsx->addRow(['Período: ' . $periodo['etiqueta']]);
+    $xlsx->addRow(['Sucursal: ' . $suc_label]);
+    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+    $xlsx->addBlankRow();
+    $xlsx->addRow(['Total incidencias', $tot_general]);
+    $xlsx->addRow(['Reincidencias', $tot_reinc]);
+    $xlsx->addRow(['% de reincidencia', $pct_reinc . '%']);
+
+    $xlsx->addSheet('Equipos');
+    $xlsx->addHeaderRow(['EQUIPOS CON MÁS INCIDENCIAS'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Código', 'Equipo', 'Tipo', 'Sucursal', 'Total', 'Reincidencias', 'Última falla'], true);
+    foreach ($equipos_recurrentes as $eq) {
+        $xlsx->addRow([$eq['codigo_inventario'], $eq['nombre'], $eq['tipo'] ?? '', $eq['sucursal_nombre'],
+            (int) $eq['total_incidencias'], (int) $eq['reincidencias'],
+            $eq['ultima_falla'] ? date('Y-m-d', strtotime($eq['ultima_falla'])) : '']);
+    }
+
+    $xlsx->addSheet('Áreas');
+    $xlsx->addHeaderRow(['ÁREAS CON PATRÓN RECURRENTE'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Área', 'Categoría', 'Total', 'Reincidencias'], true);
+    foreach ($areas_recurrentes as $ar) {
+        $xlsx->addRow([$ar['area_nombre'], $ar['categoria_nombre'], (int) $ar['total'], (int) $ar['reincidencias']]);
+    }
+
+    $xlsx->addSheet('Cadenas');
+    $xlsx->addHeaderRow(['CADENAS DE REINCIDENCIAS (padre + hijas)'], true);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Folio padre', 'Título', 'Sucursal', 'Área', '# reincidencias', 'Última'], true);
+    foreach ($cadenas as $c) {
+        $xlsx->addRow([$c['folio'], $c['titulo'], $c['sucursal_nombre'], $c['area_nombre'],
+            (int) $c['total_reincidencias'], $c['ultima_reincidencia'] ? date('Y-m-d', strtotime($c['ultima_reincidencia'])) : '']);
+    }
+    $xlsx->download('reincidencias_' . date('Ymd_His') . '.xlsx');
+    exit;
+}
+
 $titulo_pagina = 'Reporte de reincidencias';
 $pagina_activa = 'reportes';
 require_once __DIR__ . '/../config/header.php';
 ?>
 
-<style>
-@media print { .no-print { display: none !important; } aside, header.h-16 { display: none !important; } body { background: white !important; } }
-</style>
+<?php reporte_export_assets(); ?>
 
-<div class="animate-fade-in space-y-5">
+<div id="rep-area" data-pdf="<?= e($pdf_filename) ?>" class="animate-fade-in space-y-5">
+
+    <?php reporte_doc_header('Análisis de reincidencias', $periodo['etiqueta'] . ' · ' . $suc_label . ' · ' . $pct_reinc . '% reincidencia', $rep_user); ?>
 
     <!-- Header -->
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 no-print">
@@ -162,9 +215,12 @@ require_once __DIR__ . '/../config/header.php';
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <button onclick="window.print()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-                <i data-lucide="printer" class="w-4 h-4"></i> Imprimir
-            </button>
+            <?php reporte_print_button(); ?>
+            <?php reporte_pdf_button(); ?>
+            <a href="<?= url('reportes/reporte_reincidencias.php?' . http_build_query(array_merge($_GET, ['exportar' => 'xlsx']))) ?>"
+               class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">
+                <i data-lucide="sheet" class="w-4 h-4"></i> Excel
+            </a>
             <a href="<?= url('reportes/reporte_reincidencias.php?' . http_build_query(array_merge($_GET, ['exportar' => 'csv']))) ?>"
                class="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
                 <i data-lucide="download" class="w-4 h-4"></i> CSV
@@ -224,14 +280,14 @@ require_once __DIR__ . '/../config/header.php';
         <p class="text-xs text-zinc-400 italic text-center py-8">No se detectaron equipos con incidencias recurrentes.</p>
         <?php else: ?>
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm js-tabla-orden">
                 <thead class="border-b border-zinc-200">
                     <tr>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Equipo</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Tipo</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Sucursal</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Total</th>
-                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase">Reinc.</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Total</th>
+                        <th class="px-2 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase" data-orden-tipo="num">Reinc.</th>
                         <th class="px-2 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">Última</th>
                     </tr>
                 </thead>
