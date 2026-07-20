@@ -180,6 +180,11 @@ require_once __DIR__ . '/config/header.php';
                 <i data-lucide="warehouse" class="w-4 h-4"></i>
                 Dashboard almacén
             </a>
+            <a href="<?= url('refacciones_requisiciones.php') ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+                Requisiciones
+            </a>
             <?php if ($puede_gestionar): ?>
             <button onclick="document.getElementById('modal_nueva').showModal()"
                     class="px-4 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold flex items-center gap-1.5">

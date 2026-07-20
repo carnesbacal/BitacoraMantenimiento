@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/admin_helpers.php';
+require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
 
 $accion = (string) input('accion', 'listar');
 $id     = (int) input('id', 0);
@@ -42,6 +43,16 @@ if (es_post()) {
                 $ubic   = trim((string) input('ubicacion', ''));
                 $notas  = trim((string) input('notas', ''));
                 $proveedor_id = input('proveedor_id', '') !== '' ? (int) input('proveedor_id') : null;
+
+                // Alta rápida de proveedor desde el propio formulario (solo administradores).
+                $prov_nuevo_nombre = trim((string) input('prov_nuevo_nombre', ''));
+                if ($prov_nuevo_nombre !== '' && tiene_permiso('administrar')) {
+                    $proveedor_id = crear_proveedor_rapido([
+                        'nombre'   => $prov_nuevo_nombre,
+                        'servicio' => trim((string) input('prov_nuevo_servicio', '')),
+                        'telefono' => trim((string) input('prov_nuevo_telefono', '')),
+                    ], (int) (usuario_actual()['id'] ?? 0));
+                }
                 $fecha_compra = trim((string) input('fecha_compra', '')) ?: null;
                 $costo_compra = trim((string) input('costo_compra', '')) !== '' ? (float) input('costo_compra') : null;
                 $estado_vida  = (string) input('estado_vida', 'en_uso');
@@ -218,18 +229,85 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="md:col-span-2">
+            <?php
+                $sel_pr_id    = $es_edicion ? (string) ($eq['proveedor_id'] ?? '') : (string) input('proveedor_id', '');
+                $sel_pr_label = '';
+                $prov_opts    = [];
+                foreach ($proveedores_lista as $pr) {
+                    $lbl = $pr['nombre'] . ($pr['servicio'] ? ' — ' . $pr['servicio'] : '');
+                    $prov_opts[] = ['id' => (string) $pr['id'], 'label' => $lbl];
+                    if ((string) $pr['id'] === $sel_pr_id) $sel_pr_label = $lbl;
+                }
+                $puede_alta_prov = tiene_permiso('administrar');
+                $xdata_prov = '{ abrir:false, nuevo:false, q:"", lista:'
+                    . json_encode($prov_opts, JSON_UNESCAPED_UNICODE)
+                    . ', sel:' . json_encode(['id' => $sel_pr_id, 'label' => $sel_pr_label], JSON_UNESCAPED_UNICODE)
+                    . ', filtrados(){ const q=this.q.toLowerCase().trim(); return q ? this.lista.filter(p=>p.label.toLowerCase().includes(q)) : this.lista; }'
+                    . ', elegir(p){ this.sel={id:p.id||"",label:p.label||""}; this.abrir=false; this.q=""; } }';
+            ?>
+            <div class="md:col-span-2" x-data="<?= htmlspecialchars($xdata_prov, ENT_QUOTES) ?>">
                 <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Proveedor (opcional)</label>
-                <select name="proveedor_id" class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
-                    <option value="">— Sin proveedor —</option>
-                    <?php foreach ($proveedores_lista as $pr):
-                        $sel_pr = $es_edicion ? $eq['proveedor_id'] : (string) input('proveedor_id', '');
-                    ?>
-                    <option value="<?= $pr['id'] ?>" <?= (string) $sel_pr === (string) $pr['id'] ? 'selected' : '' ?>>
-                        <?= e($pr['nombre']) ?><?= $pr['servicio'] ? ' — ' . e($pr['servicio']) : '' ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
+                <input type="hidden" name="proveedor_id" value="<?= e($sel_pr_id) ?>" :value="sel.id">
+
+                <div class="relative">
+                    <button type="button" @click="abrir = !abrir"
+                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-left flex items-center justify-between gap-2 focus:outline-none focus:border-bacal-700">
+                        <span x-text="sel.id ? sel.label : '— Sin proveedor —'" :class="sel.id ? 'text-zinc-900' : 'text-zinc-400'"></span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 shrink-0"></i>
+                    </button>
+
+                    <!-- Se despliega hacia ABAJO, altura limitada y con scroll -->
+                    <div x-show="abrir" @click.outside="abrir = false" x-cloak
+                         class="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-zinc-300 rounded-lg shadow-lg overflow-hidden">
+                        <div class="p-2 border-b border-zinc-100">
+                            <input type="text" x-model="q" placeholder="Buscar proveedor…"
+                                   class="w-full px-2 py-1.5 rounded border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                        </div>
+                        <ul class="max-h-48 overflow-y-auto py-1">
+                            <li>
+                                <button type="button" @click="elegir({id:'',label:''})"
+                                        class="w-full text-left px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-50">— Sin proveedor —</button>
+                            </li>
+                            <template x-for="p in filtrados()" :key="p.id">
+                                <li>
+                                    <button type="button" @click="elegir(p)"
+                                            class="w-full text-left px-3 py-1.5 text-sm text-zinc-800 hover:bg-zinc-50" x-text="p.label"></button>
+                                </li>
+                            </template>
+                            <li x-show="filtrados().length === 0" class="px-3 py-2 text-xs text-zinc-400">Sin resultados</li>
+                        </ul>
+                        <?php if ($puede_alta_prov): ?>
+                        <div class="border-t border-zinc-100 p-2">
+                            <button type="button" @click="nuevo = true; abrir = false"
+                                    class="w-full flex items-center gap-1.5 text-xs font-semibold text-bacal-700 hover:underline">
+                                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Dar de alta un proveedor nuevo
+                            </button>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if ($puede_alta_prov): ?>
+                <div x-show="nuevo" x-collapse x-cloak class="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-semibold text-amber-800">Nuevo proveedor — se agrega al catálogo al guardar</p>
+                        <button type="button" @click="nuevo = false" class="text-[11px] text-zinc-500 hover:underline">Cancelar</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input type="text" name="prov_nuevo_nombre" maxlength="150" placeholder="Nombre *"
+                               value="<?= e((string) input('prov_nuevo_nombre', '')) ?>"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        <input type="text" name="prov_nuevo_servicio" maxlength="255" placeholder="Servicio (ej. Refrigeración)"
+                               value="<?= e((string) input('prov_nuevo_servicio', '')) ?>"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                        <input type="text" name="prov_nuevo_telefono" maxlength="50" placeholder="Teléfono"
+                               value="<?= e((string) input('prov_nuevo_telefono', '')) ?>"
+                               class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                    </div>
+                    <p class="text-[10px] text-amber-700 mt-1.5">Si escribes un nombre aquí se usa ese proveedor y se ignora el seleccionado arriba. Si ya existe uno con el mismo nombre, se reutiliza.</p>
+                </div>
+                <?php endif; ?>
+
                 <p class="text-[10px] text-zinc-500 mt-1">¿Quién nos vendió o da servicio a este equipo?</p>
             </div>
             <div>
@@ -370,8 +448,39 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
 
 <?php render_admin_header('Equipos / activos', count($equipos) . ' equipo(s) en inventario', url('admin/equipos.php?accion=nuevo'), 'Nuevo equipo'); ?>
 
+<!-- Selector rápido de sucursal (radial — usuarios con preferencia sucursal_selector=radio) -->
+<?php if (tiene_permiso('ver_todas_sucursales') && usuario_prefiere_radio_sucursal()): ?>
+<form method="GET" class="mb-4 inline-flex max-w-full items-center gap-x-4 gap-y-2 flex-wrap bg-white border border-zinc-300 rounded-lg px-3 py-2">
+    <?php
+    // Preservar los demás filtros al cambiar de sucursal
+    foreach ($_GET as $k => $v) {
+        if ($k === 'sucursal' || $k === 'p') continue;
+        if ($v !== '' && $v !== '0') {
+            echo '<input type="hidden" name="' . e($k) . '" value="' . e((string) $v) . '">';
+        }
+    }
+    ?>
+    <span class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Sucursal:</span>
+    <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+        <input type="radio" name="sucursal" value="" onchange="this.form.submit()"
+               <?= $f_sucursal <= 0 ? 'checked' : '' ?>
+               class="text-bacal-700 focus:ring-bacal-700">
+        Todas
+    </label>
+    <?php foreach ($sucursales as $s): ?>
+    <label class="flex items-center gap-1 text-sm font-medium text-zinc-700 cursor-pointer">
+        <input type="radio" name="sucursal" value="<?= $s['id'] ?>" onchange="this.form.submit()"
+               <?= $f_sucursal == $s['id'] ? 'checked' : '' ?>
+               class="text-bacal-700 focus:ring-bacal-700">
+        <?= e($s['nombre']) ?>
+    </label>
+    <?php endforeach; ?>
+</form>
+<?php endif; ?>
+
 <!-- Filtros -->
-<?php $adv_count = ($f_sucursal>0?1:0)+($f_tipo!==''?1:0)+($f_area>0?1:0)+($f_estado!==''?1:0)+($f_activo!==''?1:0); ?>
+<?php $usa_radio_suc = tiene_permiso('ver_todas_sucursales') && usuario_prefiere_radio_sucursal(); ?>
+<?php $adv_count = ((!$usa_radio_suc && $f_sucursal>0)?1:0)+($f_tipo!==''?1:0)+($f_area>0?1:0)+($f_estado!==''?1:0)+($f_activo!==''?1:0); ?>
 <form method="GET" class="mb-4" x-data="{ abierto: <?= $adv_count > 0 ? 'true' : 'false' ?> }">
     <div class="flex flex-wrap items-center gap-2">
         <div class="relative flex-1 min-w-[200px] max-w-md">
@@ -394,6 +503,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
 
     <div x-show="abierto" x-collapse x-cloak class="mt-3">
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 bg-zinc-50 border border-zinc-200 rounded-lg p-4">
+            <?php if (!$usa_radio_suc): ?>
             <div>
                 <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Sucursal</label>
                 <select name="sucursal" onchange="this.form.submit()"
@@ -404,6 +514,9 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php else: ?>
+            <input type="hidden" name="sucursal" value="<?= $f_sucursal > 0 ? (int) $f_sucursal : '' ?>">
+            <?php endif; ?>
             <div>
                 <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wide mb-1">Tipo</label>
                 <select name="tipo" onchange="this.form.submit()"
@@ -449,7 +562,7 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
 
 <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm js-tabla-orden">
             <thead class="bg-zinc-50 border-b border-zinc-200">
                 <tr>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código</th>
@@ -458,9 +571,9 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Sucursal</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Área</th>
                     <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proveedor</th>
-                    <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Comp.</th>
-                    <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fallas</th>
-                    <th class="px-4 py-2.5"></th>
+                    <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Comp.</th>
+                    <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Fallas</th>
+                    <th class="px-4 py-2.5" data-no-orden></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-zinc-100">
@@ -490,14 +603,14 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
                         <span class="text-zinc-400">—</span>
                         <?php endif; ?>
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-2.5 text-center" data-orden="<?= (int) ($eq['componentes_count'] ?? 0) ?>">
                         <a href="<?= url('equipo_componentes.php?id=' . $eq['id']) ?>"
                            class="inline-flex items-center gap-1 text-xs font-semibold <?= (int) ($eq['componentes_count'] ?? 0) > 0 ? 'text-bacal-700 hover:underline' : 'text-zinc-300 hover:text-bacal-700' ?>"
                            title="Ver / agregar componentes">
                             <i data-lucide="cpu" class="w-3.5 h-3.5"></i> <?= (int) ($eq['componentes_count'] ?? 0) ?>
                         </a>
                     </td>
-                    <td class="px-4 py-2.5 text-center">
+                    <td class="px-4 py-2.5 text-center" data-orden="<?= (int) $eq['incidencias_count'] ?>">
                         <?php if ((int) $eq['incidencias_count'] > 0): ?>
                         <a href="<?= url('bitacora.php?equipo=' . $eq['id']) ?>"
                            class="inline-flex items-center gap-1 text-xs font-bold text-bacal-700 hover:underline">

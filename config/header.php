@@ -931,6 +931,13 @@ function busquedaGlobal() {
         </div>
     </aside>
 
+    <script>
+        // Pinta los íconos del menú en cuanto el sidebar existe, sin esperar a que
+        // termine de parsearse el resto de la página (en listados largos el
+        // DOMContentLoaded del footer tardaba y el menú se veía vacío).
+        if (window.lucide) lucide.createIcons();
+    </script>
+
     <!-- ============================================================ -->
     <!-- ÁREA PRINCIPAL -->
     <!-- ============================================================ -->

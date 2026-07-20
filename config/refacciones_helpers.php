@@ -57,22 +57,27 @@ function listar_refacciones(array $filtros = []): array {
 
     $where_sql = $where ? ("WHERE " . implode(' AND ', $where)) : "";
 
-    // Si hay sucursal_id en filtros, traer el stock de esa sucursal
+    // Stock agregado en UNA sola pasada. Antes eran 2 subconsultas correlacionadas
+    // por cada refacción (2N lecturas); ahora es un solo GROUP BY unido por JOIN.
+    // Con sucursal filtrada, SUM/MIN sobre esa única fila devuelve el mismo valor.
     $sucursal_filtro = !empty($filtros['sucursal_id']) ? (int) $filtros['sucursal_id'] : null;
-    $stock_subq = $sucursal_filtro
-        ? "(SELECT cantidad_actual FROM refacciones_stock WHERE refaccion_id = r.id AND sucursal_id = $sucursal_filtro)"
-        : "(SELECT SUM(cantidad_actual) FROM refacciones_stock WHERE refaccion_id = r.id)";
-    $min_subq = $sucursal_filtro
-        ? "(SELECT cantidad_minima FROM refacciones_stock WHERE refaccion_id = r.id AND sucursal_id = $sucursal_filtro)"
-        : "(SELECT MIN(cantidad_minima) FROM refacciones_stock WHERE refaccion_id = r.id)";
+    $stock_where = $sucursal_filtro ? "WHERE sucursal_id = $sucursal_filtro" : "";
 
     return db_all(
         "SELECT r.*,
                 p.nombre AS proveedor_nombre,
-                $stock_subq AS stock_total,
-                $min_subq AS minimo_total
+                st.stock_total,
+                st.minimo_total
          FROM refacciones r
          LEFT JOIN proveedores p ON r.proveedor_id = p.id
+         LEFT JOIN (
+             SELECT refaccion_id,
+                    SUM(cantidad_actual) AS stock_total,
+                    MIN(cantidad_minima) AS minimo_total
+             FROM refacciones_stock
+             $stock_where
+             GROUP BY refaccion_id
+         ) st ON st.refaccion_id = r.id
          $where_sql
          ORDER BY r.nombre ASC",
         $params
