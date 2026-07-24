@@ -136,8 +136,6 @@ if (es_post() && $puede_gestionar) {
             $mant_e = db_one("SELECT * FROM flotilla_mant_historial WHERE id = :id", ['id' => $mid_e]);
             if (!$mant_e) {
                 $errores[] = 'Mantenimiento no encontrado.';
-            } elseif (array_key_exists('fecha_fin', $mant_e) && $mant_e['fecha_fin'] !== null) {
-                $errores[] = 'Solo se pueden editar mantenimientos abiertos (sin fecha de fin).';
             } else {
                 $nombre_e = trim((string) input('nombre', ''));
                 $fecha_e  = trim((string) input('fecha', '')) ?: $mant_e['fecha'];
@@ -273,7 +271,7 @@ $pendientes = db_all(
         AND h.id = (
             SELECT h2.id FROM flotilla_mant_historial h2
              WHERE h2.vehiculo_id = h.vehiculo_id AND h2.nombre = h.nombre
-             ORDER BY h2.fecha DESC LIMIT 1
+             ORDER BY h2.fecha DESC, h2.id DESC LIMIT 1
         )"
     . ($f_vehiculo_id ? " AND h.vehiculo_id = {$f_vehiculo_id}" : '')
     . ($f_sucursal ? " AND v.sucursal_id = {$f_sucursal}" : '')
@@ -620,8 +618,12 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                                 <?php if (!$h_fa && !$h_fd && !$h_fac): ?><span class="text-zinc-300">—</span><?php endif; ?>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-right">
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
                             <?php if ($puede_gestionar): ?>
+                            <button type="button" onclick="abrirEditarMant(<?= (int) $h['id'] ?>)"
+                                    class="p-1.5 rounded hover:bg-bacal-50 text-zinc-400 hover:text-bacal-700" title="Editar / adjuntar factura">
+                                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                            </button>
                             <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este registro?')">
                                 <?= csrf_input() ?>
                                 <input type="hidden" name="op" value="eliminar">
@@ -917,7 +919,7 @@ function abrirCerrarMant(id, fechaInicio, costo, nombre) {
     <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
         <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
             <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
-                <i data-lucide="pencil" class="w-4 h-4 text-bacal-700"></i> Editar mantenimiento (abierto)
+                <i data-lucide="pencil" class="w-4 h-4 text-bacal-700"></i> Editar mantenimiento
             </h3>
             <button type="button" onclick="document.getElementById('modal-editar-mant').classList.add('hidden')" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
@@ -989,7 +991,12 @@ function abrirCerrarMant(id, fechaInicio, costo, nombre) {
 </div>
 <script>
 window.mantsAb = {
-<?php foreach ($mant_abiertos as $ma): ?>
+<?php
+    // Todos los registros editables desde esta página (abiertos + historial mostrado).
+    $editables_js = [];
+    foreach (array_merge($mant_abiertos, $historial) as $ma) { $editables_js[(int) $ma['id']] = $ma; }
+    foreach ($editables_js as $ma):
+?>
     <?= (int) $ma['id'] ?>: <?= json_encode([
         'nombre' => $ma['nombre'],
         'fecha'  => $ma['fecha'],

@@ -448,6 +448,52 @@ function flotilla_actualizar_km(int $vehiculo_id, int $km_nuevo, bool $es_admin,
 /**
  * Rendimiento promedio de un vehículo (últimas N cargas con tanque lleno).
  */
+/**
+ * Recalcula km_recorridos y rendimiento_kml de TODAS las cargas de un vehículo,
+ * recorriendo la cadena en orden cronológico. Reglas:
+ *   - Solo calcula si la carga inmediatamente anterior tiene km real (> 0) y el
+ *     avance es positivo (evita que una carga previa en 0 tome el odómetro completo).
+ *   - Tope de cordura: descarta tramos absurdos (> 30,000 km entre cargas), que
+ *     casi siempre son un km sin capturar o un error de dedo.
+ *   - El rendimiento solo se calcula en cargas de tanque lleno.
+ * Idempotente: llamar tras crear, editar o eliminar una carga.
+ */
+function flotilla_combustible_resync_rendimiento(int $vid): void {
+    if ($vid <= 0) return;
+    try {
+        $cargas = db_all(
+            "SELECT id, km_odometro, litros, es_tanque_lleno
+               FROM flotilla_combustible
+              WHERE vehiculo_id = :v
+              ORDER BY fecha ASC, id ASC",
+            ['v' => $vid]
+        );
+        $prev = null;
+        foreach ($cargas as $c) {
+            $km  = (int) $c['km_odometro'];
+            $lit = (float) $c['litros'];
+            $km_rec = null; $rend = null;
+            if ($prev !== null) {
+                $pkm = (int) $prev['km_odometro'];
+                if ($pkm > 0 && $km > 0 && $km > $pkm) {
+                    $delta = $km - $pkm;
+                    if ($delta <= 30000) {
+                        $km_rec = $delta;
+                        if ($lit > 0 && (int) $c['es_tanque_lleno'] === 1) {
+                            $rend = round($delta / $lit, 3);
+                        }
+                    }
+                }
+            }
+            db_exec(
+                "UPDATE flotilla_combustible SET km_recorridos = :kr, rendimiento_kml = :r WHERE id = :id",
+                ['kr' => $km_rec, 'r' => $rend, 'id' => (int) $c['id']]
+            );
+            $prev = $c;
+        }
+    } catch (Throwable $e) {}
+}
+
 function flotilla_rendimiento_promedio(int $vehiculo_id, int $cargas = 5): ?float {
     $row = db_one(
         "SELECT AVG(rendimiento_kml) avg_rend

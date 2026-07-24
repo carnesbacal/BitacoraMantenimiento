@@ -139,6 +139,7 @@ if (es_post() && $puede_gestionar) {
 
                     // Sincronizar odómetro (km_actual + historial 'combustible') desde las cargas.
                     flotilla_combustible_resync_odometro($vid);
+                    flotilla_combustible_resync_rendimiento($vid);
 
                     // Crear gasto automático
                     $cat_comb = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre = 'Combustible' LIMIT 1");
@@ -273,6 +274,7 @@ if (es_post() && $puede_gestionar) {
 
                         // Recalcular odómetro (km_actual + historial) del vehículo.
                         flotilla_combustible_resync_odometro($vid);
+                        flotilla_combustible_resync_rendimiento($vid);
 
                         registrar_auditoria('editar_combustible', 'flotilla_combustible', $eid,
                             "Vehículo ID {$vid}: {$litros}L @ \${$precio_litro}");
@@ -286,11 +288,21 @@ if (es_post() && $puede_gestionar) {
             }
         }
 
+        if ($op === 'recalcular_rend' && tiene_permiso('administrar')) {
+            $vids = db_all("SELECT id FROM flotilla_vehiculos");
+            $n = 0;
+            foreach ($vids as $vv) { flotilla_combustible_resync_rendimiento((int) $vv['id']); $n++; }
+            registrar_auditoria('recalcular_rendimiento', 'flotilla_combustible', 0, "{$n} vehículos");
+            flash_set('exito', "Rendimiento recalculado en {$n} vehículo(s).");
+            header('Location: ' . url("flotilla_combustible.php?vehiculo_id={$f_vehiculo_id}&desde={$f_desde}&hasta={$f_hasta}"));
+            exit;
+        }
+
         if ($op === 'eliminar' && tiene_permiso('administrar')) {
             $del_id = (int) input('del_id', 0);
             $del_vid = (int) (db_one("SELECT vehiculo_id FROM flotilla_combustible WHERE id = :id", ['id' => $del_id])['vehiculo_id'] ?? 0);
             db_exec("DELETE FROM flotilla_combustible WHERE id = :id", ['id' => $del_id]);
-            if ($del_vid) flotilla_combustible_resync_odometro($del_vid);
+            if ($del_vid) { flotilla_combustible_resync_odometro($del_vid); flotilla_combustible_resync_rendimiento($del_vid); }
             flash_set('exito', 'Registro eliminado.');
             header('Location: ' . url("flotilla_combustible.php?vehiculo_id={$f_vehiculo_id}&desde={$f_desde}&hasta={$f_hasta}"));
             exit;
@@ -382,6 +394,16 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                 class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-semibold flex items-center gap-1.5">
             <i data-lucide="gauge" class="w-4 h-4"></i> Actualizar odómetro
         </button>
+        <?php endif; ?>
+        <?php if (tiene_permiso('administrar')): ?>
+        <form method="POST" class="inline" onsubmit="return confirm('¿Recalcular el rendimiento de todas las unidades con los km capturados? Corrige los valores viejos e inconsistentes.')">
+            <?= csrf_input() ?>
+            <input type="hidden" name="op" value="recalcular_rend">
+            <button type="submit" title="Recalcula km recorridos y km/L de todas las cargas con los odómetros capturados"
+                    class="px-3 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-semibold flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Recalcular rendimiento
+            </button>
+        </form>
         <?php endif; ?>
     </div>
 

@@ -166,6 +166,7 @@ if (es_post() && $puede_gestionar) {
 
                 // Sincronizar odómetro (km_actual + historial 'combustible') desde las cargas.
                 flotilla_combustible_resync_odometro($id);
+                flotilla_combustible_resync_rendimiento($id);
 
                 // Registrar gasto automático (ligado a la carga por combustible_id).
                 $cat_comb = db_one("SELECT id FROM flotilla_categorias_gasto WHERE nombre LIKE '%Combustible%' LIMIT 1");
@@ -274,6 +275,7 @@ if (es_post() && $puede_gestionar) {
                         }
 
                         flotilla_combustible_resync_odometro($id);
+                        flotilla_combustible_resync_rendimiento($id);
 
                         registrar_auditoria('editar_combustible', 'flotilla_combustible', $eid,
                             "Vehículo ID {$id}: {$litros}L @ \${$precio}");
