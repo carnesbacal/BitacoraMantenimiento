@@ -129,6 +129,18 @@ try {
         .font-display { font-family: 'Bricolage Grotesque', sans-serif; letter-spacing: -0.02em; }
 
         /* ===================================================================
+           LEGIBILIDAD - Gris tenue más oscuro (modo claro)
+           Sube el contraste de los textos secundarios pequeños en TODA la app
+           (montos bajo los totales, subtítulos, notas, etc.).
+           Para hacerlo más o menos oscuro, cambia SOLO --texto-tenue:
+             #52525b = gris oscuro legible (por defecto)
+             #3f3f46 = casi negro   ·   #71717a = intermedio
+           En modo oscuro no aplica: los overrides html.dark tienen prioridad.
+           =================================================================== */
+        :root { --texto-tenue: #52525b; }               /* antes zinc-400 (#a1a1aa) */
+        .text-zinc-400 { color: var(--texto-tenue) !important; }
+
+        /* ===================================================================
            MODO OSCURO - Overrides globales
            Se aplican cuando <html class="dark">
            Mapea automáticamente clases de Tailwind comunes en el sistema

@@ -210,6 +210,48 @@ $mantenimientos = db_all(
 // 7b. Proveedores de flotilla más caros (gasto de mantenimiento por proveedor)
 $prov_flota = flotilla_gasto_proveedores($desde, $hasta, $suc_filter_gastos, 15);
 
+// 7b2. Viajes de la flota en el periodo (por unidad) y viajes recientes.
+$viajes_en_curso = 0; $viajes_resumen = ['n' => 0, 'km' => 0];
+$viajes_por_unidad = []; $viajes_recientes = [];
+if (db_one("SHOW TABLES LIKE 'flotilla_viajes'")) {
+    $km_rec_sql = "SUM(CASE WHEN t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida THEN t.km_llegada - t.km_salida ELSE 0 END)";
+    $viajes_en_curso = (int) (db_one(
+        "SELECT COUNT(*) n FROM flotilla_viajes t
+           INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+          WHERE t.estado = 'en_ruta' $suc_filter_gastos"
+    )['n'] ?? 0);
+    $viajes_resumen = db_one(
+        "SELECT COUNT(*) n, $km_rec_sql km FROM flotilla_viajes t
+           INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+          WHERE t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos",
+        ['desde' => $desde, 'hasta' => $hasta]
+    ) ?: ['n' => 0, 'km' => 0];
+    $viajes_por_unidad = db_all(
+        "SELECT v.id, v.alias, v.placas, v.marca, v.modelo, COUNT(*) num_viajes, $km_rec_sql km
+           FROM flotilla_viajes t
+           INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+          WHERE t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos
+          GROUP BY v.id HAVING km > 0 ORDER BY km DESC LIMIT 15",
+        ['desde' => $desde, 'hasta' => $hasta]
+    );
+    $km_rec_row = "(CASE WHEN t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida THEN t.km_llegada - t.km_salida ELSE NULL END)";
+    $viajes_recientes = db_all(
+        "SELECT t.id, t.fecha_salida, t.estado, t.proposito, t.destino_descripcion,
+                $km_rec_row AS km,
+                v.id vid, v.alias, v.placas, v.marca, v.modelo,
+                so.nombre suc_origen, sd.nombre suc_destino
+           FROM flotilla_viajes t
+           INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+           LEFT  JOIN sucursales so ON t.sucursal_origen_id  = so.id
+           LEFT  JOIN sucursales sd ON t.sucursal_destino_id = sd.id
+          WHERE (t.estado = 'en_ruta'
+                 OR (t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta)) $suc_filter_gastos
+          ORDER BY (t.estado = 'en_ruta') DESC, t.fecha_salida DESC, t.id DESC
+          LIMIT 12",
+        ['desde' => $desde, 'hasta' => $hasta]
+    );
+}
+
 // 7c. Uso de la flota: km recorridos por vehículo (ODÓMETRO manual) + costo integral por km.
 $km_por_veh = [];
 if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
@@ -231,34 +273,36 @@ if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
 }
 $max_km_veh = !empty($km_por_veh) ? max(array_column($km_por_veh, 'km')) : 1;
 
-// 7d. Anomalías GPS / combustible por vehículo (activos).
+// 7d. Anomalías lógicas por vehículo (activos) — SOLO datos manuales que ya tenemos
+//     (odómetro por capturas + combustible). Sin GPS/Monsat.
 $anomalias = [];
-if (db_one("SHOW TABLES LIKE 'flotilla_km_gps'")) {
-    $hoy_a = date('Y-m-d');
+if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
     $rows_a = db_all(
         "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
-            (SELECT COALESCE(SUM(k.km),0) FROM flotilla_km_gps k WHERE k.vehiculo_id=v.id AND k.fecha BETWEEN :d AND :h) km,
-            (SELECT MAX(k.fecha) FROM flotilla_km_gps k WHERE k.vehiculo_id=v.id) ult_gps,
-            (SELECT COALESCE(SUM(c.litros),0) FROM flotilla_combustible c WHERE c.vehiculo_id=v.id AND DATE(c.fecha) BETWEEN :d2 AND :h2) litros
+            (SELECT (MAX(h.km) - MIN(h.km)) FROM flotilla_odometro_historial h
+              WHERE h.vehiculo_id = v.id AND DATE(h.leido_en) BETWEEN :d AND :h
+                AND (h.origen IS NULL OR h.origen <> 'gps')) km,
+            (SELECT COALESCE(SUM(c.litros),0) FROM flotilla_combustible c
+              WHERE c.vehiculo_id = v.id AND DATE(c.fecha) BETWEEN :d2 AND :h2) litros
          FROM flotilla_vehiculos v
-         WHERE v.activo=1 $suc_filter_gastos
+         WHERE v.activo = 1 $suc_filter_gastos
          ORDER BY v.alias",
         ['d' => $desde, 'h' => $hasta, 'd2' => $desde, 'h2' => $hasta]
     );
     foreach ($rows_a as $ra) {
-        $km = (float) $ra['km']; $lt = (float) $ra['litros']; $ug = $ra['ult_gps'];
-        $dsg = $ug ? (int) floor((strtotime($hoy_a) - strtotime($ug)) / 86400) : null;
+        $km = (float) ($ra['km'] ?? 0); $lt = (float) $ra['litros'];
         $flags = [];
-        if ($ug === null) {
-            $flags[] = ['zinc', 'Sin datos de GPS', 'Nunca ha reportado kilometraje por GPS.'];
-        } elseif ($dsg !== null && $dsg > 7) {
-            $flags[] = ['red', 'GPS sin reportar', "Sin datos de GPS hace {$dsg} días (última: " . fmt_fecha($ug, false) . ")."];
-        }
         if ($km > 300 && $lt <= 0) {
-            $flags[] = ['amber', 'Km sin combustible', 'Recorrió ' . number_format($km) . ' km pero no hay cargas de combustible en el período. ¿Falta registrar cargas?'];
+            $flags[] = ['amber', 'Km sin combustible', 'Recorrió ' . number_format($km) . ' km (odómetro) pero no hay cargas de combustible en el período. ¿Falta registrar cargas?'];
         }
         if ($lt > 5 && $km <= 0) {
-            $flags[] = ['amber', 'Combustible sin km', 'Cargó ' . number_format($lt, 0) . ' L pero el GPS no registra km. ¿GPS caído o unidad sin moverse?'];
+            $flags[] = ['amber', 'Combustible sin km', 'Cargó ' . number_format($lt, 0) . ' L pero el odómetro no registra avance en el período. ¿Falta actualizar el odómetro?'];
+        }
+        if ($km > 0 && $lt > 0) {
+            $rend = $km / $lt;
+            if ($rend < 1.5 || $rend > 30) {
+                $flags[] = ['red', 'Rendimiento fuera de rango', number_format($rend, 1) . ' km/L en el período (' . number_format($km) . ' km / ' . number_format($lt, 0) . ' L). Revisa las capturas de odómetro o de combustible.'];
+            }
         }
         foreach ($flags as $fl) {
             $anomalias[] = ['veh' => $ra, 'color' => $fl[0], 'titulo' => $fl[1], 'detalle' => $fl[2]];
@@ -716,6 +760,88 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
 
     </div>
 
+    <!-- Viajes de la flota -->
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2 flex-wrap">
+            <i data-lucide="map-pin" class="w-5 h-5 text-bacal-700"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Viajes de la flota</h3>
+            <?php if ($viajes_en_curso > 0): ?>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800"><?= (int) $viajes_en_curso ?> en ruta</span>
+            <?php endif; ?>
+            <span class="ml-auto text-[11px] text-zinc-400">
+                <?= (int) ($viajes_resumen['n'] ?? 0) ?> viajes · <?= number_format((float) ($viajes_resumen['km'] ?? 0)) ?> km · <?= e($label_periodo) ?>
+            </span>
+            <a href="<?= url('flotilla_viajes.php') ?>" class="text-[11px] font-semibold text-bacal-700 hover:underline flex items-center gap-1">
+                Ver todos <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
+            </a>
+        </div>
+        <?php if (empty($viajes_por_unidad) && empty($viajes_recientes)): ?>
+        <div class="px-5 py-8 text-center text-sm text-zinc-500">Sin viajes completados en el periodo.</div>
+        <?php else: ?>
+        <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-100">
+            <!-- Por unidad -->
+            <div class="p-5">
+                <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Km recorridos por unidad</h4>
+                <?php if (empty($viajes_por_unidad)): ?>
+                <p class="text-xs text-zinc-400">Sin datos.</p>
+                <?php else: $vmax = max(array_map(fn($x) => (float) $x['km'], $viajes_por_unidad) ?: [1]); ?>
+                <div class="space-y-2.5">
+                    <?php foreach ($viajes_por_unidad as $vu): $pct = $vmax > 0 ? ((float) $vu['km'] / $vmax) * 100 : 0; ?>
+                    <div>
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <a href="<?= url('flotilla_vehiculo_ver.php?id=' . $vu['id'] . '&tab=viajes') ?>" class="font-medium text-zinc-700 hover:underline truncate max-w-[190px]">
+                                <?= e($vu['alias'] ?: "{$vu['marca']} {$vu['modelo']}") ?>
+                                <span class="font-mono text-zinc-400 ml-1"><?= e($vu['placas']) ?></span>
+                            </a>
+                            <span class="font-bold text-zinc-800 ml-2 shrink-0"><?= number_format((float) $vu['km']) ?> km</span>
+                        </div>
+                        <div class="w-full bg-zinc-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-bacal-600" style="width:<?= $pct ?>%"></div></div>
+                        <div class="text-[10px] text-zinc-400 mt-0.5"><?= (int) $vu['num_viajes'] ?> viaje(s)</div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <!-- Viajes recientes -->
+            <div class="p-5">
+                <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Viajes recientes</h4>
+                <?php if (empty($viajes_recientes)): ?>
+                <p class="text-xs text-zinc-400">Sin viajes en el periodo.</p>
+                <?php else: ?>
+                <div class="space-y-2">
+                    <?php foreach ($viajes_recientes as $vr):
+                        $ruta = trim((string) ($vr['suc_origen'] ?? '')) ?: '—';
+                        $dest = trim((string) ($vr['suc_destino'] ?? '')) ?: trim((string) ($vr['destino_descripcion'] ?? ''));
+                        $en_ruta = ($vr['estado'] === 'en_ruta');
+                    ?>
+                    <a href="<?= url('flotilla_vehiculo_ver.php?id=' . $vr['vid'] . '&tab=viajes') ?>"
+                       class="block rounded-lg border border-zinc-100 hover:border-bacal-200 hover:bg-bacal-50/40 px-3 py-2 transition-colors">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-medium text-xs text-zinc-800 truncate">
+                                <?= e($vr['alias'] ?: "{$vr['marca']} {$vr['modelo']}") ?>
+                                <span class="font-mono text-zinc-400 ml-1"><?= e($vr['placas']) ?></span>
+                            </span>
+                            <?php if ($en_ruta): ?>
+                            <span class="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-800">EN RUTA</span>
+                            <?php else: ?>
+                            <span class="shrink-0 font-bold text-xs text-zinc-700"><?= $vr['km'] !== null ? number_format((float) $vr['km']) . ' km' : '—' ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 mt-0.5">
+                            <span class="text-[11px] text-zinc-500 truncate">
+                                <?= e($ruta) ?><?= $dest ? ' → ' . e($dest) : '' ?>
+                            </span>
+                            <span class="shrink-0 text-[10px] text-zinc-400"><?= e(date('d/m/y', strtotime((string) $vr['fecha_salida']))) ?></span>
+                        </div>
+                    </a>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+
     <!-- Proveedores de flotilla más caros -->
     <?php if (!empty($prov_flota)): ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
@@ -757,7 +883,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
     </div>
     <?php endif; ?>
 
-    <!-- Uso de la flota (km GPS) -->
+    <!-- Uso de la flota (km del odómetro, capturas manuales) -->
     <?php if (!empty($km_por_veh)): ?>
     <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
@@ -806,7 +932,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
     </div>
     <?php endif; ?>
 
-    <!-- Anomalías GPS / combustible -->
+    <!-- Anomalías lógicas (odómetro + combustible, sin GPS) -->
     <?php if (!empty($anomalias)):
         $cmap = [
             'red'   => ['bg-red-500',   'text-red-700',   'bg-red-50'],
@@ -818,7 +944,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Anomalías detectadas</h3>
-            <span class="ml-auto text-[11px] text-zinc-400">GPS y combustible · <?= count($anomalias) ?></span>
+            <span class="ml-auto text-[11px] text-zinc-400">Odómetro y combustible · <?= count($anomalias) ?></span>
         </div>
         <div class="divide-y divide-zinc-100">
             <?php foreach ($anomalias as $an):

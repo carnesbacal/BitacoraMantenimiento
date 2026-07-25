@@ -107,6 +107,14 @@ $costos_mes = costos_resumen_periodo(
     $where_sucursal, $params_sucursal
 );
 
+// Adquisiciones del mes (compras de refacciones + equipos). La flotilla NO se incluye
+// aquí: se reporta por separado en su propio módulo.
+require_once __DIR__ . '/config/reportes_helpers.php';
+$adq_refacc_mes  = adquisiciones_refacciones(date('Y-m-01'), date('Y-m-d'), (int) ($sucursal_filtro ?? 0), 1);
+$adq_equipos_mes = adquisiciones_equipos(date('Y-m-01'), date('Y-m-d'), (int) ($sucursal_filtro ?? 0), 1);
+$adq_mes_total   = (float) $adq_refacc_mes['total'] + (float) $adq_equipos_mes['total'];
+$total_mes_costos = (float) $costos_mes['total'] + $adq_mes_total;
+
 // ----------------------------------------------------------------------------
 // Datos de gráficas
 // ----------------------------------------------------------------------------
@@ -637,9 +645,9 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
             <div class="p-5">
                 <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Total gastado</div>
                 <div class="font-display text-3xl font-extrabold text-bacal-700 leading-none">
-                    <?= e(fmt_dinero_corto($costos_mes['total'])) ?>
+                    <?= e(fmt_dinero_corto($total_mes_costos)) ?>
                 </div>
-                <div class="text-[10px] text-zinc-400 mt-1.5"><?= e(fmt_dinero($costos_mes['total'])) ?></div>
+                <div class="text-xs text-zinc-600 mt-1.5"><?= e(fmt_dinero($total_mes_costos)) ?></div>
             </div>
             <!-- Externo (proveedores) -->
             <div class="p-5">
@@ -647,7 +655,7 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
                 <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
                     <?= e(fmt_dinero_corto($costos_mes['externo'])) ?>
                 </div>
-                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['pct_externo'] ?>% del total</div>
+                <div class="text-xs text-zinc-600 mt-1.5"><?= $costos_mes['pct_externo'] ?>% del total</div>
             </div>
             <!-- Interno (refacciones) -->
             <div class="p-5">
@@ -655,30 +663,32 @@ $mes_actual_es = $meses_es[(int) date('n') - 1] . ' ' . date('Y');
                 <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
                     <?= e(fmt_dinero_corto($costos_mes['interno'])) ?>
                 </div>
-                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['pct_interno'] ?>% del total</div>
+                <div class="text-xs text-zinc-600 mt-1.5"><?= $costos_mes['pct_interno'] ?>% del total</div>
             </div>
-            <!-- Promedio -->
+            <!-- Adquisiciones (compras del mes) -->
             <div class="p-5">
-                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Promedio / incidencia</div>
+                <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Adquisiciones</div>
                 <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none">
-                    <?= e(fmt_dinero_corto($costos_mes['promedio'])) ?>
+                    <?= e(fmt_dinero_corto($adq_mes_total)) ?>
                 </div>
-                <div class="text-[10px] text-zinc-400 mt-1.5"><?= $costos_mes['con_costo'] ?> con costo registrado</div>
+                <div class="text-xs text-zinc-600 mt-1.5">Refacc. <?= e(fmt_dinero_corto((float) $adq_refacc_mes['total'])) ?> + Equipos <?= e(fmt_dinero_corto((float) $adq_equipos_mes['total'])) ?></div>
             </div>
         </div>
-        <?php if ($costos_mes['total'] > 0): ?>
+        <?php if ($total_mes_costos > 0):
+            $p_ext = round((float) $costos_mes['externo'] / $total_mes_costos * 100, 1);
+            $p_int = round((float) $costos_mes['interno'] / $total_mes_costos * 100, 1);
+            $p_adq = round($adq_mes_total / $total_mes_costos * 100, 1);
+        ?>
         <div class="px-5 pb-4">
             <div class="flex gap-0.5 h-2 rounded-full overflow-hidden">
-                <?php if ($costos_mes['pct_externo'] > 0): ?>
-                <div class="bg-bacal-600" style="width: <?= $costos_mes['pct_externo'] ?>%" title="Proveedores"></div>
-                <?php endif; ?>
-                <?php if ($costos_mes['pct_interno'] > 0): ?>
-                <div class="bg-zinc-400" style="width: <?= $costos_mes['pct_interno'] ?>%" title="Refacciones internas"></div>
-                <?php endif; ?>
+                <?php if ($p_ext > 0): ?><div class="bg-bacal-600" style="width: <?= $p_ext ?>%" title="Proveedores"></div><?php endif; ?>
+                <?php if ($p_int > 0): ?><div class="bg-zinc-400" style="width: <?= $p_int ?>%" title="Refacciones internas"></div><?php endif; ?>
+                <?php if ($p_adq > 0): ?><div class="bg-emerald-500" style="width: <?= $p_adq ?>%" title="Adquisiciones"></div><?php endif; ?>
             </div>
-            <div class="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
+            <div class="flex items-center gap-4 mt-2 text-[10px] text-zinc-500 flex-wrap">
                 <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-bacal-600"></span> Proveedores</span>
                 <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-zinc-400"></span> Refacciones internas</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Adquisiciones (compras)</span>
             </div>
         </div>
         <?php else: ?>

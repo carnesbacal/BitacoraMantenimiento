@@ -13,6 +13,7 @@ $_fnav = [
     'flotilla_conductores'  => ['flotilla_conductores.php',  'user-check',       'Conductores'],
     'flotilla_combustible'  => ['flotilla_combustible.php',  'fuel',             'Combustible'],
     'flotilla_mantenimiento'=> ['flotilla_mantenimiento.php','wrench',           'Mantenimiento'],
+    'flotilla_viajes'       => ['flotilla_viajes.php',       'map-pin',          'Viajes'],
     'flotilla_documentos'   => ['flotilla_documentos.php',   'file-check',       'Documentos'],
     'flotilla_checklist'    => ['flotilla_checklist.php',    'clipboard-check',  'Checklist'],
     'flotilla_siniestros'   => ['flotilla_siniestros.php',   'shield-alert',     'Siniestros'],

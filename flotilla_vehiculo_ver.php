@@ -473,7 +473,7 @@ if (es_post() && $puede_gestionar) {
 
         // --- Viaje ---
         if ($op === 'viaje_crear') {
-            $km_sal = (int) input('km_salida', 0);
+            $km_sal = (float) input('km_salida', 0);
             $vd = [
                 'vehiculo_id'           => $id,
                 'conductor_id'          => (int) input('conductor_id_viaje', 0) ?: null,
@@ -503,14 +503,14 @@ if (es_post() && $puede_gestionar) {
         // --- Cerrar viaje ---
         if ($op === 'viaje_cerrar') {
             $viaje_id = (int) input('viaje_id', 0);
-            $km_ll    = (int) input('km_llegada', 0);
+            $km_ll    = (float) input('km_llegada', 0);
             if ($km_ll > 0) {
                 db_exec("UPDATE flotilla_viajes SET km_llegada = :km, fecha_llegada = NOW(), estado = 'completado' WHERE id = :id AND vehiculo_id = :vid",
                     ['km' => $km_ll, 'id' => $viaje_id, 'vid' => $id]);
                 if ($km_ll > $vehiculo['km_actual']) {
                     db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
                         ['km' => $km_ll, 'id' => $id, 'km2' => $km_ll]);
-                    flotilla_odometro_registrar($id, $km_ll, 'viaje', (int) $vehiculo['km_actual'], $u['id']);
+                    flotilla_odometro_registrar($id, (int) round($km_ll), 'viaje', (int) $vehiculo['km_actual'], $u['id']);
                 }
                 flash_set('exito', 'Viaje cerrado.');
             }
@@ -1763,7 +1763,7 @@ require_once __DIR__ . '/config/header.php';
                         <input type="hidden" name="viaje_id" value="<?= $v['id'] ?>">
                         <div class="flex-1">
                             <label class="block text-xs font-bold text-zinc-700 mb-1">Km de llegada</label>
-                            <input type="number" name="km_llegada" required min="<?= $v['km_salida'] + 1 ?>"
+                            <input type="number" name="km_llegada" required min="<?= $v['km_salida'] ?>" step="0.1"
                                    placeholder="<?= $v['km_salida'] + 1 ?>+"
                                    class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                         </div>
@@ -1820,7 +1820,7 @@ require_once __DIR__ . '/config/header.php';
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-zinc-700 mb-1">Km salida <span class="text-red-500">*</span></label>
-                        <input type="number" name="km_salida" required min="0" value="<?= $vehiculo['km_actual'] ?>"
+                        <input type="number" name="km_salida" required min="0" step="0.1" value="<?= $vehiculo['km_actual'] ?>"
                                class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                     </div>
                 </div>

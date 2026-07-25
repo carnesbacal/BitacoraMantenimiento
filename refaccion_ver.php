@@ -558,6 +558,20 @@ require_once __DIR__ . '/config/header.php';
                        class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
             </div>
 
+            <div x-show="tipo === 'entrada'" x-cloak>
+                <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase">
+                    Costo unitario
+                    <span class="text-zinc-400 normal-case font-normal">(para el gasto del mes)</span>
+                </label>
+                <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+                    <input type="number" name="costo_unitario" min="0" step="0.01"
+                           value="<?= e($ref['costo_unitario'] ?? '') ?>"
+                           class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:border-bacal-700">
+                </div>
+                <p class="text-[11px] text-zinc-400 mt-1">Si lo dejas vacío se usa el costo del catálogo para el reporte de costos.</p>
+            </div>
+
             <div>
                 <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase">Motivo</label>
                 <select name="motivo" class="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">

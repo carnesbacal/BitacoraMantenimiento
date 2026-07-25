@@ -47,6 +47,15 @@ $flota_total = 0.0;
 foreach ($prov_flota as $fp) { $flota_total += (float) $fp['total']; }
 $por_sucursal= $sucursal_filtro ? [] : costos_por_sucursal($periodo['desde'], $periodo['hasta']);
 
+// Adquisiciones de mantenimiento del período (compras) — bloque nuevo del total.
+// Compras de refacciones (incluyen requisiciones recibidas) + equipos adquiridos.
+$adq_refacc  = adquisiciones_refacciones($periodo['desde'], $periodo['hasta'], (int) $sucursal_filtro, 15);
+$adq_equipos = adquisiciones_equipos($periodo['desde'], $periodo['hasta'], (int) $sucursal_filtro, 15);
+$adq_total   = (float) $adq_refacc['total'] + (float) $adq_equipos['total'];
+// Total del período: incidencias (consumo interno + proveedores) + adquisiciones (compras).
+// La flotilla NO se incluye: se reporta por separado (tiene su propia sección/página).
+$gran_total  = (float) $resumen['total'] + $adq_total;
+
 // Etiqueta de sucursal y datos para encabezados / exportación (impresión y PDF).
 $suc_label = 'Todas las sucursales';
 if ($sucursal_filtro) {
@@ -66,6 +75,12 @@ $prev_hasta   = date('Y-m-d', strtotime($periodo['desde'] . ' -1 day'));
 $dur_dias     = (int) (new DateTime($periodo['hasta']))->diff(new DateTime($periodo['desde']))->days;
 $prev_desde   = date('Y-m-d', strtotime($prev_hasta . ' -' . $dur_dias . ' days'));
 $resumen_prev = costos_resumen_periodo($prev_desde, $prev_hasta, $where_sucursal, $params_sucursal);
+
+// Componentes del período anterior para comparar el TOTAL del mes (sin flotilla).
+$adq_refacc_prev  = adquisiciones_refacciones($prev_desde, $prev_hasta, (int) $sucursal_filtro, 1);
+$adq_equipos_prev = adquisiciones_equipos($prev_desde, $prev_hasta, (int) $sucursal_filtro, 1);
+$adq_total_prev   = (float) $adq_refacc_prev['total'] + (float) $adq_equipos_prev['total'];
+$gran_total_prev  = (float) $resumen_prev['total'] + $adq_total_prev;
 
 $delta_html = function (float $cur, float $prev, bool $neutral = false): string {
     if ($prev <= 0) return $cur > 0 ? '<span class="text-zinc-400">sin base previa</span>' : '';
@@ -89,13 +104,15 @@ if ($es_exportacion) {
     csv_fila(['']);
 
     csv_fila(['RESUMEN']);
-    csv_fila(['Costo total', number_format($resumen['total'], 2, '.', '')]);
+    csv_fila(['Costo de incidencias (interno + proveedores)', number_format($resumen['total'], 2, '.', '')]);
     csv_fila(['Costo externo (proveedores)', number_format($resumen['externo'], 2, '.', '')]);
     csv_fila(['  Mano de obra', number_format($resumen['mano_obra'], 2, '.', '')]);
     csv_fila(['  Materiales proveedor', number_format($resumen['materiales'], 2, '.', '')]);
     csv_fila(['Costo interno (refacciones)', number_format($resumen['interno'], 2, '.', '')]);
-    csv_fila(['Gasto flotilla (mantenimiento de vehículos)', number_format($flota_total, 2, '.', '')]);
-    csv_fila(['TOTAL GENERAL (mantenimiento + flotilla)', number_format((float) $resumen['total'] + $flota_total, 2, '.', '')]);
+    csv_fila(['Adquisiciones · compras de refacciones (incl. requisiciones)', number_format((float) $adq_refacc['total'], 2, '.', '')]);
+    csv_fila(['Adquisiciones · equipos comprados', number_format((float) $adq_equipos['total'], 2, '.', '')]);
+    csv_fila(['TOTAL DEL MES (incidencias + adquisiciones)', number_format($gran_total, 2, '.', '')]);
+    csv_fila(['Gasto flotilla (por separado, NO incluido en el total)', number_format($flota_total, 2, '.', '')]);
     csv_fila(['Incidencias en el período', $resumen['num_total']]);
     csv_fila(['  Internas', $resumen['num_total'] - $resumen['con_proveedor']]);
     csv_fila(['  Externas (con proveedor)', $resumen['con_proveedor']]);
@@ -156,6 +173,31 @@ if ($es_exportacion) {
             ]);
         }
     }
+
+    if (!empty($adq_refacc['detalle']) || !empty($adq_equipos['detalle'])) {
+        csv_fila(['']);
+        csv_fila(['ADQUISICIONES DEL PERÍODO (COMPRAS)']);
+        csv_fila(['Compras de refacciones (incl. requisiciones)', 'Piezas', 'Movimientos', 'Costo']);
+        foreach ($adq_refacc['detalle'] as $ar) {
+            csv_fila([
+                trim($ar['nombre'] . ' (' . $ar['codigo'] . ')'),
+                number_format((float) $ar['piezas'], 2, '.', ''),
+                (int) $ar['movimientos'],
+                number_format((float) $ar['total'], 2, '.', ''),
+            ]);
+        }
+        csv_fila(['Subtotal refacciones', '', '', number_format((float) $adq_refacc['total'], 2, '.', '')]);
+        csv_fila(['']);
+        csv_fila(['Equipos adquiridos', 'Código', 'Fecha compra', 'Costo']);
+        foreach ($adq_equipos['detalle'] as $ae) {
+            csv_fila([
+                $ae['nombre'], $ae['codigo_inventario'],
+                (string) $ae['fecha_compra'],
+                number_format((float) $ae['costo_compra'], 2, '.', ''),
+            ]);
+        }
+        csv_fila(['Subtotal equipos', '', '', number_format((float) $adq_equipos['total'], 2, '.', '')]);
+    }
     exit;
 }
 
@@ -178,7 +220,7 @@ if ($es_xlsx) {
     $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
     $xlsx->addBlankRow();
     $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
-    $xlsx->addRow(['Costo total', round((float) $resumen['total'], 2)]);
+    $xlsx->addRow(['Costo de incidencias (interno + proveedores)', round((float) $resumen['total'], 2)]);
     $xlsx->addRow(['Costo externo (proveedores)', round((float) $resumen['externo'], 2)]);
     $xlsx->addRow(['  Mano de obra', round((float) $resumen['mano_obra'], 2)]);
     $xlsx->addRow(['  Materiales proveedor', round((float) $resumen['materiales'], 2)]);
@@ -187,8 +229,10 @@ if ($es_xlsx) {
     $xlsx->addRow(['  Con costo', (int) $resumen['con_costo']]);
     $xlsx->addRow(['  Con proveedor', (int) $resumen['con_proveedor']]);
     $xlsx->addRow(['Costo promedio por incidencia con costo', round((float) $resumen['promedio'], 2)]);
-    $xlsx->addRow(['Gasto flotilla (mantenimiento de vehículos)', round((float) $flota_total, 2)]);
-    $xlsx->addRow(['TOTAL GENERAL (mantenimiento + flotilla)', round((float) $resumen['total'] + (float) $flota_total, 2)]);
+    $xlsx->addRow(['Adquisiciones · compras de refacciones (incl. requisiciones)', round((float) $adq_refacc['total'], 2)]);
+    $xlsx->addRow(['Adquisiciones · equipos comprados', round((float) $adq_equipos['total'], 2)]);
+    $xlsx->addRow(['TOTAL DEL MES (incidencias + adquisiciones)', round((float) $gran_total, 2)]);
+    $xlsx->addRow(['Gasto flotilla (por separado, NO incluido en el total)', round((float) $flota_total, 2)]);
     $xlsx->addBlankRow();
     $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $prev_desde . ' a ' . $prev_hasta . ')'], true);
     $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
@@ -197,7 +241,8 @@ if ($es_xlsx) {
         $var = $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) . '%' : 'n/d';
         return [round($cur, 2), round($prev, 2), $var];
     };
-    $xlsx->addRow(array_merge(['Costo total'],           $cmp($resumen['total'],     $resumen_prev['total'])));
+    $xlsx->addRow(array_merge(['Costo de incidencias'],  $cmp($resumen['total'],     $resumen_prev['total'])));
+    $xlsx->addRow(array_merge(['TOTAL del mes (todo)'],  $cmp($gran_total,           $gran_total_prev)));
     $xlsx->addRow(array_merge(['Externo (proveedores)'], $cmp($resumen['externo'],   $resumen_prev['externo'])));
     $xlsx->addRow(array_merge(['Interno (refacciones)'], $cmp($resumen['interno'],   $resumen_prev['interno'])));
     $xlsx->addRow(array_merge(['Incidencias'],           $cmp($resumen['num_total'], $resumen_prev['num_total'])));
@@ -289,6 +334,33 @@ if ($es_xlsx) {
             $ext = (float) $t['externo']; $int = (float) $t['interno'];
             $xlsx->addRow([$t['label'], round($ext, 2), round($int, 2), round($ext + $int, 2)]);
         }
+    }
+
+    // Hoja 7: Adquisiciones del período (compras)
+    if (!empty($adq_refacc['detalle']) || !empty($adq_equipos['detalle'])) {
+        $xlsx->addSheet('Adquisiciones');
+        $xlsx->addHeaderRow(['ADQUISICIONES DEL PERÍODO (COMPRAS)'], true);
+        $xlsx->addRow([$periodo_label]);
+        $xlsx->addRow(['Incluye requisiciones recibidas (entradas de almacén tipo compra) + equipos comprados.']);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Compras de refacciones', 'Código', 'Piezas', 'Movimientos', 'Costo'], true);
+        foreach ($adq_refacc['detalle'] as $ar) {
+            $xlsx->addRow([
+                $ar['nombre'], $ar['codigo'],
+                round((float) $ar['piezas'], 2), (int) $ar['movimientos'], round((float) $ar['total'], 2),
+            ]);
+        }
+        $xlsx->addRow(['Subtotal refacciones', '', '', '', round((float) $adq_refacc['total'], 2)]);
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['Equipos adquiridos', 'Código', 'Fecha compra', '', 'Costo'], true);
+        foreach ($adq_equipos['detalle'] as $ae) {
+            $xlsx->addRow([
+                $ae['nombre'], $ae['codigo_inventario'], (string) $ae['fecha_compra'], '', round((float) $ae['costo_compra'], 2),
+            ]);
+        }
+        $xlsx->addRow(['Subtotal equipos', '', '', '', round((float) $adq_equipos['total'], 2)]);
+        $xlsx->addBlankRow();
+        $xlsx->addRow(['TOTAL ADQUISICIONES', '', '', '', round((float) $adq_total, 2)]);
     }
 
     $xlsx->download('reporte_costos_' . date('Ymd_His') . '.xlsx');
@@ -433,30 +505,63 @@ require_once __DIR__ . '/../config/header.php';
     <!-- KPIs -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gradient-to-br from-bacal-50 to-white rounded-xl border border-bacal-200 shadow-sm p-5">
-            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Costo total</div>
-            <div class="font-display text-3xl font-extrabold text-bacal-700 leading-none"><?= e(fmt_dinero_corto($resumen['total'])) ?></div>
-            <div class="text-[10px] text-zinc-400 mt-1.5"><?= e(fmt_dinero($resumen['total'])) ?></div>
-            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['total'], (float) $resumen_prev['total']) ?></div>
+            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Costo total del mes</div>
+            <div class="font-display text-3xl font-extrabold text-bacal-700 leading-none"><?= e(fmt_dinero_corto($gran_total)) ?></div>
+            <div class="text-xs text-zinc-600 mt-1.5"><?= e(fmt_dinero($gran_total)) ?></div>
+            <div class="text-xs mt-1"><?= $delta_html((float) $gran_total, (float) $gran_total_prev) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Proveedores</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($resumen['externo'])) ?></div>
-            <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['pct_externo'] ?>% · MO <?= e(fmt_dinero_corto($resumen['mano_obra'])) ?> + Mat <?= e(fmt_dinero_corto($resumen['materiales'])) ?></div>
-            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['externo'], (float) $resumen_prev['externo']) ?></div>
+            <div class="text-xs text-zinc-600 mt-1.5">MO <?= e(fmt_dinero_corto($resumen['mano_obra'])) ?> + Mat <?= e(fmt_dinero_corto($resumen['materiales'])) ?></div>
+            <div class="text-xs mt-1"><?= $delta_html((float) $resumen['externo'], (float) $resumen_prev['externo']) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
-            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Refacciones internas</div>
-            <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($resumen['interno'])) ?></div>
-            <div class="text-[10px] text-zinc-400 mt-1.5"><?= $resumen['pct_interno'] ?>% del total</div>
-            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['interno'], (float) $resumen_prev['interno']) ?></div>
+            <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Adquisiciones</div>
+            <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= e(fmt_dinero_corto($adq_total)) ?></div>
+            <div class="text-xs text-zinc-600 mt-1.5">Refacc. <?= e(fmt_dinero_corto((float) $adq_refacc['total'])) ?> + Equipos <?= e(fmt_dinero_corto((float) $adq_equipos['total'])) ?></div>
+            <div class="text-xs mt-1"><?= $delta_html((float) $adq_total, (float) $adq_total_prev) ?></div>
         </div>
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
             <div class="text-[11px] text-zinc-500 uppercase tracking-wider font-bold mb-1">Incidencias</div>
             <div class="font-display text-2xl font-extrabold text-zinc-900 leading-none"><?= number_format($resumen['num_total']) ?></div>
-            <div class="text-[10px] text-zinc-400 mt-1.5"><?= number_format($resumen['num_total'] - $resumen['con_proveedor']) ?> internas · <?= number_format($resumen['con_proveedor']) ?> externas</div>
-            <div class="text-[10px] text-zinc-400 mt-0.5">Prom. <?= e(fmt_dinero($resumen['promedio'])) ?> por incidencia con costo</div>
-            <div class="text-[10px] mt-1"><?= $delta_html((float) $resumen['num_total'], (float) $resumen_prev['num_total'], true) ?></div>
+            <div class="text-xs text-zinc-600 mt-1.5"><?= number_format($resumen['num_total'] - $resumen['con_proveedor']) ?> internas · <?= number_format($resumen['con_proveedor']) ?> externas</div>
+            <div class="text-xs text-zinc-600 mt-0.5">Prom. <?= e(fmt_dinero($resumen['promedio'])) ?> por incidencia con costo</div>
+            <div class="text-xs mt-1"><?= $delta_html((float) $resumen['num_total'], (float) $resumen_prev['num_total'], true) ?></div>
         </div>
+    </div>
+
+    <!-- Desglose del costo total del mes -->
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+            <i data-lucide="layers" class="w-5 h-5 text-bacal-700"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Desglose del costo total del mes</h3>
+            <span class="ml-auto text-[11px] text-zinc-400"><?= e($periodo['etiqueta']) ?> · <?= e($suc_label) ?></span>
+        </div>
+        <?php
+        $desglose = [
+            ['Incidencias · refacciones internas (consumo)', (float) $resumen['interno'],   'bg-zinc-400'],
+            ['Incidencias · proveedores (mano de obra + materiales)', (float) $resumen['externo'], 'bg-bacal-600'],
+            ['Refacciones compradas' . ((float) $adq_refacc['piezas'] > 0 ? ' · ' . rtrim(rtrim(number_format((float) $adq_refacc['piezas'], 2), '0'), '.') . ' pza(s)' : ''), (float) $adq_refacc['total'], 'bg-emerald-500'],
+            ['Equipos comprados' . ((int) $adq_equipos['equipos'] > 0 ? ' · ' . (int) $adq_equipos['equipos'] : ''), (float) $adq_equipos['total'], 'bg-emerald-700'],
+        ];
+        ?>
+        <div class="space-y-2.5">
+            <?php foreach ($desglose as [$lbl, $val, $color]): $pct = $gran_total > 0 ? $val / $gran_total * 100 : 0; ?>
+            <div>
+                <div class="flex items-center justify-between text-sm mb-1 gap-2">
+                    <span class="flex items-center gap-2 text-zinc-700 min-w-0"><span class="w-2.5 h-2.5 rounded-sm <?= $color ?> shrink-0"></span><span class="truncate"><?= e($lbl) ?></span></span>
+                    <span class="font-semibold text-zinc-900 shrink-0"><?= e(fmt_dinero($val)) ?> <span class="text-xs text-zinc-500 ml-1"><?= number_format($pct, 1) ?>%</span></span>
+                </div>
+                <div class="w-full bg-zinc-100 rounded-full h-1.5"><div class="h-1.5 rounded-full <?= $color ?>" style="width:<?= round($pct) ?>%"></div></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <div class="flex items-center justify-between border-t border-zinc-200 mt-4 pt-3">
+            <span class="font-bold text-sm text-zinc-900 uppercase tracking-wide">Total del mes</span>
+            <span class="font-display text-xl font-extrabold text-bacal-700"><?= e(fmt_dinero($gran_total)) ?></span>
+        </div>
+        <p class="text-[11px] text-zinc-500 mt-2">Suma consumo en órdenes + compras de refacciones (incluye requisiciones recibidas) + equipos. La flotilla se reporta por separado. Una refacción comprada y usada el mismo mes puede aparecer en dos rubros.</p>
     </div>
 
     <!-- Tendencia + Desglose -->
@@ -649,6 +754,77 @@ require_once __DIR__ . '/../config/header.php';
                     </tr>
                 </tfoot>
             </table>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Adquisiciones del mes -->
+    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2 flex-wrap">
+            <i data-lucide="shopping-cart" class="w-5 h-5 text-emerald-600"></i>
+            <h3 class="font-display text-base font-bold text-zinc-900">Adquisiciones del mes</h3>
+            <span class="ml-auto text-[11px] text-zinc-400">Compras de refacciones (incl. requisiciones) + equipos · <?= e(fmt_dinero($adq_total)) ?></span>
+        </div>
+        <?php if ($adq_refacc['total'] <= 0 && $adq_equipos['total'] <= 0): ?>
+        <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin compras de refacciones ni equipos en el período.</div>
+        <?php else: ?>
+        <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-100">
+            <!-- Compras de refacciones -->
+            <div class="p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Compras de refacciones</h4>
+                    <span class="font-bold text-sm text-emerald-700"><?= e(fmt_dinero((float) $adq_refacc['total'])) ?></span>
+                </div>
+                <?php if (empty($adq_refacc['detalle'])): ?>
+                <p class="text-xs text-zinc-400">Sin compras de refacciones en el período.</p>
+                <?php else: ?>
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] text-zinc-400 uppercase">
+                        <th class="text-left font-bold pb-2">Refacción</th>
+                        <th class="text-right font-bold pb-2">Piezas</th>
+                        <th class="text-right font-bold pb-2">Costo</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-zinc-50">
+                    <?php foreach ($adq_refacc['detalle'] as $ar): ?>
+                        <tr>
+                            <td class="py-1.5 pr-2"><span class="font-medium text-zinc-800"><?= e($ar['nombre']) ?></span> <span class="text-[10px] font-mono text-zinc-400"><?= e($ar['codigo']) ?></span></td>
+                            <td class="py-1.5 text-right text-xs text-zinc-600"><?= rtrim(rtrim(number_format((float) $ar['piezas'], 2), '0'), '.') ?></td>
+                            <td class="py-1.5 text-right font-semibold text-zinc-800"><?= e(fmt_dinero((float) $ar['total'])) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <div class="text-[10px] text-zinc-400 mt-2"><?= (int) $adq_refacc['movimientos'] ?> movimiento(s) de compra</div>
+                <?php endif; ?>
+            </div>
+            <!-- Equipos adquiridos -->
+            <div class="p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Equipos adquiridos</h4>
+                    <span class="font-bold text-sm text-emerald-700"><?= e(fmt_dinero((float) $adq_equipos['total'])) ?></span>
+                </div>
+                <?php if (empty($adq_equipos['detalle'])): ?>
+                <p class="text-xs text-zinc-400">Sin equipos comprados en el período.</p>
+                <?php else: ?>
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] text-zinc-400 uppercase">
+                        <th class="text-left font-bold pb-2">Equipo</th>
+                        <th class="text-right font-bold pb-2">Fecha</th>
+                        <th class="text-right font-bold pb-2">Costo</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-zinc-50">
+                    <?php foreach ($adq_equipos['detalle'] as $ae): ?>
+                        <tr>
+                            <td class="py-1.5 pr-2"><span class="font-medium text-zinc-800"><?= e($ae['nombre']) ?></span> <span class="text-[10px] font-mono text-zinc-400"><?= e($ae['codigo_inventario']) ?></span></td>
+                            <td class="py-1.5 text-right text-xs text-zinc-500"><?= e(date('d/m/y', strtotime((string) $ae['fecha_compra']))) ?></td>
+                            <td class="py-1.5 text-right font-semibold text-zinc-800"><?= e(fmt_dinero((float) $ae['costo_compra'])) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <div class="text-[10px] text-zinc-400 mt-2"><?= (int) $adq_equipos['equipos'] ?> equipo(s)</div>
+                <?php endif; ?>
+            </div>
         </div>
         <?php endif; ?>
     </div>

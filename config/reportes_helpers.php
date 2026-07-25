@@ -272,6 +272,101 @@ function comparativa_sucursales(string $desde, string $hasta): array {
 }
 
 // ============================================================================
+// ADQUISICIONES DE MANTENIMIENTO (compras del período)
+// ============================================================================
+
+/**
+ * Compras de refacciones (entradas de almacén con motivo 'compra') en el período.
+ * Incluye automáticamente las requisiciones recibidas, porque al recibirlas el
+ * sistema genera un movimiento de entrada 'compra' con su costo. Solo suma
+ * Cada entrada se valúa con el costo del movimiento y, si viene vacío, con el
+ * costo unitario del catálogo de la refacción (COALESCE), para que las compras
+ * cuenten aunque no se haya capturado el costo en el movimiento.
+ * Devuelve total ($), número de movimientos, piezas y desglose por refacción.
+ */
+function adquisiciones_refacciones(string $desde, string $hasta, int $sucursal_id = 0, int $limite = 15): array {
+    $vacio = ['total' => 0.0, 'movimientos' => 0, 'piezas' => 0.0, 'detalle' => []];
+    if (!db_one("SHOW TABLES LIKE 'refacciones_movimientos'")) return $vacio;
+
+    $where  = "m.tipo = 'entrada' AND m.motivo = 'compra'
+               AND DATE(m.creado_en) BETWEEN :d AND :h";
+    $params = ['d' => $desde, 'h' => $hasta];
+    if ($sucursal_id > 0) { $where .= ' AND m.sucursal_id = :s'; $params['s'] = $sucursal_id; }
+
+    // Valor de la compra: costo del movimiento o, en su defecto, el del catálogo.
+    $valor = 'm.cantidad * COALESCE(m.costo_unitario, r.costo_unitario, 0)';
+
+    $tot = db_one(
+        "SELECT COALESCE(SUM($valor), 0) total,
+                COUNT(*) movimientos,
+                COALESCE(SUM(m.cantidad), 0) piezas
+           FROM refacciones_movimientos m
+           INNER JOIN refacciones r ON m.refaccion_id = r.id
+          WHERE $where",
+        $params
+    ) ?: ['total' => 0, 'movimientos' => 0, 'piezas' => 0];
+
+    $detalle = db_all(
+        "SELECT r.codigo, r.nombre,
+                COUNT(*) movimientos,
+                COALESCE(SUM(m.cantidad), 0) piezas,
+                COALESCE(SUM($valor), 0) total
+           FROM refacciones_movimientos m
+           INNER JOIN refacciones r ON m.refaccion_id = r.id
+          WHERE $where
+          GROUP BY r.id
+          HAVING total > 0
+          ORDER BY total DESC
+          LIMIT " . (int) $limite,
+        $params
+    );
+
+    return [
+        'total'       => (float) $tot['total'],
+        'movimientos' => (int) $tot['movimientos'],
+        'piezas'      => (float) $tot['piezas'],
+        'detalle'     => $detalle,
+    ];
+}
+
+/**
+ * Equipos adquiridos (comprados) en el período, según fecha_compra y costo_compra.
+ * Devuelve total ($), número de equipos y desglose.
+ */
+function adquisiciones_equipos(string $desde, string $hasta, int $sucursal_id = 0, int $limite = 15): array {
+    $vacio = ['total' => 0.0, 'equipos' => 0, 'detalle' => []];
+    if (!db_one("SHOW TABLES LIKE 'equipos'")) return $vacio;
+
+    $where  = "e.fecha_compra IS NOT NULL AND e.costo_compra IS NOT NULL AND e.costo_compra > 0
+               AND e.fecha_compra BETWEEN :d AND :h";
+    $params = ['d' => $desde, 'h' => $hasta];
+    if ($sucursal_id > 0) { $where .= ' AND e.sucursal_id = :s'; $params['s'] = $sucursal_id; }
+
+    $tot = db_one(
+        "SELECT COALESCE(SUM(e.costo_compra), 0) total, COUNT(*) equipos
+           FROM equipos e WHERE $where",
+        $params
+    ) ?: ['total' => 0, 'equipos' => 0];
+
+    $detalle = db_all(
+        "SELECT e.id, e.codigo_inventario, e.nombre, e.fecha_compra, e.costo_compra,
+                s.nombre sucursal_nombre
+           FROM equipos e
+           LEFT JOIN sucursales s ON e.sucursal_id = s.id
+          WHERE $where
+          ORDER BY e.costo_compra DESC
+          LIMIT " . (int) $limite,
+        $params
+    );
+
+    return [
+        'total'   => (float) $tot['total'],
+        'equipos' => (int) $tot['equipos'],
+        'detalle' => $detalle,
+    ];
+}
+
+// ============================================================================
 // EXPORTACIÓN A CSV
 // ============================================================================
 
