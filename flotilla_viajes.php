@@ -44,6 +44,17 @@ if (es_post() && $puede_gestionar) {
         }
         header('Location: ' . url('flotilla_viajes.php?' . http_build_query(array_diff_key($_GET, ['op' => 1]))));
         exit;
+    } elseif ((string) input('op') === 'viaje_eliminar') {
+        $viaje_id = (int) input('viaje_id', 0);
+        $res = flotilla_viaje_eliminar($viaje_id);
+        if ($res['ok']) {
+            registrar_auditoria('eliminar_viaje', 'flotilla_viajes', $viaje_id, '');
+            flash_set('exito', 'Viaje eliminado.');
+        } else {
+            flash_set('error', 'No se pudo eliminar el viaje.');
+        }
+        header('Location: ' . url('flotilla_viajes.php?' . http_build_query(array_diff_key($_GET, ['op' => 1]))));
+        exit;
     }
 }
 
@@ -320,13 +331,24 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                             <?php endif; ?>
                         </td>
                         <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                            <?php if ($en_ruta && $puede_gestionar): ?>
-                            <button type="button"
-                                    onclick="cerrarViaje(<?= (int) $v['id'] ?>, <?= (float) $v['km_salida'] ?>)"
-                                    class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
-                                Cerrar
-                            </button>
-                            <?php endif; ?>
+                            <div class="inline-flex items-center gap-1">
+                                <?php if ($en_ruta && $puede_gestionar): ?>
+                                <button type="button"
+                                        onclick="cerrarViaje(<?= (int) $v['id'] ?>, <?= (float) $v['km_salida'] ?>)"
+                                        class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
+                                    Cerrar
+                                </button>
+                                <?php endif; ?>
+                                <?php if ($puede_gestionar): ?>
+                                <form method="POST" class="inline-block" onsubmit="return confirm('¿Eliminar este viaje? Esta acción no se puede deshacer.');">
+                                    <?= csrf_input() ?>
+                                    <input type="hidden" name="op" value="viaje_eliminar">
+                                    <input type="hidden" name="viaje_id" value="<?= (int) $v['id'] ?>">
+                                    <button type="submit" title="Eliminar viaje"
+                                            class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                </form>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>

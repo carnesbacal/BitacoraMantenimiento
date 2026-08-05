@@ -80,26 +80,11 @@ $kpi_comb = db_one(
     ['desde' => $desde, 'hasta' => $hasta]
 ) ?? [];
 
-// 2b. Km recorridos en el período según el ODÓMETRO (MAX - MIN por vehículo).
-// Se usa como respaldo porque las cargas importadas (Xiga) no traen km por carga.
-$km_odometro_periodo = 0;
-try {
-    if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
-        $km_odo = db_one(
-            "SELECT COALESCE(SUM(t.km_periodo), 0) km
-             FROM (
-                SELECT h.vehiculo_id, MAX(h.km) - MIN(h.km) km_periodo
-                FROM flotilla_odometro_historial h
-                INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
-                WHERE DATE(h.leido_en) BETWEEN :desde AND :hasta
-                  AND (h.origen IS NULL OR h.origen <> 'gps') $suc_filter_gastos
-                GROUP BY h.vehiculo_id
-             ) t",
-            ['desde' => $desde, 'hasta' => $hasta]
-        );
-        $km_odometro_periodo = (int) ($km_odo['km'] ?? 0);
-    }
-} catch (Throwable $e) { $km_odometro_periodo = 0; }
+// 2b. Km recorridos en el período según el ODÓMETRO manual (avances consecutivos
+// plausibles por vehículo). Robusto ante lecturas erróneas (ver helper). Este mapa
+// [vehiculo_id => km] se reutiliza en el rendimiento, uso de flota y anomalías.
+$km_map_periodo      = flotilla_km_recorridos_periodo($desde, $hasta, $f_suc);
+$km_odometro_periodo = (int) array_sum($km_map_periodo);
 
 // 3. KPIs mantenimiento
 $kpi_mant = db_one(
@@ -146,54 +131,41 @@ $por_vehiculo = db_all(
 );
 
 // 6. Rendimiento combustible por vehículo.
-// Los km recorridos se toman del ODÓMETRO (MAX-MIN en el período) porque las cargas
-// importadas no traen km por carga. Rendimiento estimado = km del odómetro / litros del período.
-// Km recorridos SOLO de capturas manuales: odómetro (lecturas manuales/papel/Xiga) o km por carga.
-$tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
-$join_odo  = $tiene_odo
-    ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
-                  FROM flotilla_odometro_historial
-                  WHERE DATE(leido_en) BETWEEN :desde2 AND :hasta2
-                    AND (origen IS NULL OR origen <> 'gps')
-                  GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
-    : "";
-$_km_parts = [];
-if ($tiene_odo) $_km_parts[] = "MAX(o.km_periodo)";
-$_km_parts[] = "SUM(c.km_recorridos)";
-$_km_parts[] = "0";
-$km_expr   = "COALESCE(" . implode(", ", $_km_parts) . ")";
-$params_r  = ['desde' => $desde, 'hasta' => $hasta];
-if ($tiene_odo) { $params_r['desde2'] = $desde; $params_r['hasta2'] = $hasta; }
+// Km recorridos = mapa robusto del odómetro (avances consecutivos plausibles, sin GPS);
+// si la unidad no tiene odómetro, se respalda con los km capturados por carga.
+// Rendimiento estimado = km recorridos / litros del período.
 $rendimiento = db_all(
     "SELECT v.id, v.placas, v.alias, v.marca, v.modelo,
             COUNT(c.id) cargas,
             ROUND(SUM(c.litros),1) total_litros,
             COALESCE(SUM(c.litros * c.precio_litro),0) costo_comb,
-            $km_expr km_recorridos,
-            CASE WHEN $km_expr > 0 AND SUM(c.litros) > 0
-                 THEN ROUND($km_expr / SUM(c.litros), 2) ELSE 0 END rend_prom
+            COALESCE(SUM(c.km_recorridos),0) km_cargas
      FROM flotilla_vehiculos v
      INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id
         AND DATE(c.fecha) BETWEEN :desde AND :hasta
-     $join_odo
      WHERE 1 $suc_filter_gastos
      GROUP BY v.id
-     HAVING cargas >= 1
-     ORDER BY rend_prom DESC",
-    $params_r
+     HAVING cargas >= 1",
+    ['desde' => $desde, 'hasta' => $hasta]
 );
 
-// Métricas derivadas por unidad (costo/km y $/L) + total de km manual del periodo.
+// Métricas derivadas por unidad. Km recorridos: mapa robusto del odómetro
+// (avances consecutivos); si un vehículo no tiene odómetro, respaldo con km por carga.
 $km_total_manual = 0;
 foreach ($rendimiento as &$rv) {
-    $rv['km_recorridos']     = (int) $rv['km_recorridos'];
+    $km = (int) ($km_map_periodo[(int) $rv['id']] ?? 0);
+    if ($km <= 0) $km = (int) $rv['km_cargas'];
+    $rv['km_recorridos']     = $km;
     $rv['total_litros']      = (float) $rv['total_litros'];
     $rv['costo_comb']        = (float) $rv['costo_comb'];
-    $rv['costo_km']          = ($rv['km_recorridos'] > 0) ? round($rv['costo_comb'] / $rv['km_recorridos'], 2) : 0;
+    $rv['rend_prom']         = ($km > 0 && $rv['total_litros'] > 0) ? round($km / $rv['total_litros'], 2) : 0;
+    $rv['costo_km']          = ($km > 0) ? round($rv['costo_comb'] / $km, 2) : 0;
     $rv['precio_litro_prom'] = ($rv['total_litros'] > 0) ? round($rv['costo_comb'] / $rv['total_litros'], 2) : 0;
-    $km_total_manual        += $rv['km_recorridos'];
+    $km_total_manual        += $km;
 }
 unset($rv);
+// Orden por rendimiento (km/L) descendente, como antes.
+usort($rendimiento, fn($a, $b) => ($b['rend_prom'] <=> $a['rend_prom']));
 
 // 7. Mantenimientos del período
 $mantenimientos = db_all(
@@ -255,21 +227,21 @@ if (db_one("SHOW TABLES LIKE 'flotilla_viajes'")) {
 // 7c. Uso de la flota: km recorridos por vehículo (ODÓMETRO manual) + costo integral por km.
 $km_por_veh = [];
 if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
-    $km_por_veh = db_all(
+    $rows_kv = db_all(
         "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
-                (MAX(h.km) - MIN(h.km)) km,
                 (SELECT COALESCE(SUM(monto),0) FROM flotilla_gastos gx
-                 WHERE gx.vehiculo_id = v.id AND gx.fecha BETWEEN :d2 AND :h2) gasto_total
-         FROM flotilla_vehiculos v
-         INNER JOIN flotilla_odometro_historial h ON h.vehiculo_id = v.id
-            AND DATE(h.leido_en) BETWEEN :desde AND :hasta
-            AND (h.origen IS NULL OR h.origen <> 'gps')
-         WHERE v.activo = 1 $suc_filter_gastos
-         GROUP BY v.id
-         HAVING km > 0
-         ORDER BY km DESC",
-        ['desde' => $desde, 'hasta' => $hasta, 'd2' => $desde, 'h2' => $hasta]
+                  WHERE gx.vehiculo_id = v.id AND gx.fecha BETWEEN :d2 AND :h2) gasto_total
+           FROM flotilla_vehiculos v
+          WHERE v.activo = 1 $suc_filter_gastos",
+        ['d2' => $desde, 'h2' => $hasta]
     );
+    foreach ($rows_kv as $kv) {
+        $kmv = (int) ($km_map_periodo[(int) $kv['id']] ?? 0);
+        if ($kmv <= 0) continue;               // solo unidades con avance real de odómetro
+        $kv['km'] = $kmv;
+        $km_por_veh[] = $kv;
+    }
+    usort($km_por_veh, fn($a, $b) => ($b['km'] <=> $a['km']));
 }
 $max_km_veh = !empty($km_por_veh) ? max(array_column($km_por_veh, 'km')) : 1;
 
@@ -279,18 +251,15 @@ $anomalias = [];
 if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
     $rows_a = db_all(
         "SELECT v.id, v.alias, v.placas, v.marca, v.modelo,
-            (SELECT (MAX(h.km) - MIN(h.km)) FROM flotilla_odometro_historial h
-              WHERE h.vehiculo_id = v.id AND DATE(h.leido_en) BETWEEN :d AND :h
-                AND (h.origen IS NULL OR h.origen <> 'gps')) km,
             (SELECT COALESCE(SUM(c.litros),0) FROM flotilla_combustible c
               WHERE c.vehiculo_id = v.id AND DATE(c.fecha) BETWEEN :d2 AND :h2) litros
          FROM flotilla_vehiculos v
          WHERE v.activo = 1 $suc_filter_gastos
          ORDER BY v.alias",
-        ['d' => $desde, 'h' => $hasta, 'd2' => $desde, 'h2' => $hasta]
+        ['d2' => $desde, 'h2' => $hasta]
     );
     foreach ($rows_a as $ra) {
-        $km = (float) ($ra['km'] ?? 0); $lt = (float) $ra['litros'];
+        $km = (float) ($km_map_periodo[(int) $ra['id']] ?? 0); $lt = (float) $ra['litros'];
         $flags = [];
         if ($km > 300 && $lt <= 0) {
             $flags[] = ['amber', 'Km sin combustible', 'Recorrió ' . number_format($km) . ' km (odómetro) pero no hay cargas de combustible en el período. ¿Falta registrar cargas?'];

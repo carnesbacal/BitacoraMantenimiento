@@ -318,6 +318,136 @@ function flotilla_odometro_registrar(int $vid, int $km, string $origen, ?int $km
 }
 
 /**
+ * Km recorridos por vehículo en un período, SOLO con capturas manuales de odómetro
+ * (excluye GPS). Robusto ante lecturas erróneas: en vez de MAX-MIN (que un solo dato
+ * mal capturado dispara), suma únicamente los AVANCES CONSECUTIVOS plausibles
+ * (0 < delta <= tope), ignorando retrocesos y saltos imposibles (un dígito de más,
+ * o un valor bajo capturado por error).
+ *
+ * El tope por paso se escala con la duración del período (≈1000 km/día, mínimo 3000,
+ * máximo 50000) para tolerar huecos grandes sin dejar pasar errores gruesos.
+ *
+ * @return array<int,int> [vehiculo_id => km_recorridos]
+ */
+function flotilla_km_recorridos_periodo(string $desde, string $hasta, int $sucursal_id = 0, ?int $tope = null): array {
+    if (!db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) return [];
+    $dias = 1 + (int) max(0, (strtotime($hasta) - strtotime($desde)) / 86400);
+    $tope = $tope ?? (int) min(50000, max(3000, $dias * 1000));
+
+    $suc    = $sucursal_id > 0 ? ' AND v.sucursal_id = :s' : '';
+    $params = ['d' => $desde, 'h' => $hasta];
+    if ($sucursal_id > 0) $params['s'] = $sucursal_id;
+
+    $rows = db_all(
+        "SELECT h.vehiculo_id, h.km
+           FROM flotilla_odometro_historial h
+           INNER JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
+          WHERE DATE(h.leido_en) BETWEEN :d AND :h
+            AND (h.origen IS NULL OR h.origen <> 'gps') $suc
+          ORDER BY h.vehiculo_id, h.leido_en, h.id",
+        $params
+    );
+
+    $km = [];   // acumulado por vehículo
+    $prev = [];  // última lectura vista por vehículo
+    foreach ($rows as $r) {
+        $vid = (int) $r['vehiculo_id'];
+        $val = (int) $r['km'];
+        if (isset($prev[$vid])) {
+            $delta = $val - $prev[$vid];
+            if ($delta > 0 && $delta <= $tope) {
+                $km[$vid] = ($km[$vid] ?? 0) + $delta;
+            }
+        }
+        $prev[$vid] = $val;
+    }
+    return $km;
+}
+
+/**
+ * Recalcula km_actual del vehículo = el mayor entre su km inicial y la última
+ * lectura manual (excluye GPS). Se llama tras editar/eliminar lecturas o viajes.
+ */
+function flotilla_odometro_recalcular_km_actual(int $vid): void {
+    if ($vid <= 0) return;
+    try {
+        db_exec(
+            "UPDATE flotilla_vehiculos v
+                SET v.km_actual = GREATEST(
+                    v.km_inicial,
+                    COALESCE((SELECT MAX(h.km) FROM flotilla_odometro_historial h
+                               WHERE h.vehiculo_id = v.id AND h.origen <> 'gps'), 0)
+                )
+              WHERE v.id = :v",
+            ['v' => $vid]
+        );
+    } catch (Throwable $e) {}
+}
+
+/**
+ * Elimina una lectura de odómetro. Solo se permite en lecturas capturadas a mano
+ * ('manual' o 'historico'); las de carga/viaje/mantenimiento se corrigen en su
+ * registro origen. Recalcula km_actual. Devuelve ['ok'=>bool, 'vid'=>int, 'error'=>string].
+ */
+function flotilla_odometro_eliminar_lectura(int $lectura_id): array {
+    if (!db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) return ['ok' => false, 'error' => 'No disponible.'];
+    $l = db_one("SELECT id, vehiculo_id, origen FROM flotilla_odometro_historial WHERE id = :id", ['id' => $lectura_id]);
+    if (!$l) return ['ok' => false, 'error' => 'Lectura no encontrada.'];
+    if (!in_array((string) $l['origen'], ['manual', 'historico'], true)) {
+        return ['ok' => false, 'error' => 'Solo se pueden eliminar lecturas manuales o históricas. Las de carga, viaje o mantenimiento se corrigen en su registro origen.'];
+    }
+    db_exec("DELETE FROM flotilla_odometro_historial WHERE id = :id", ['id' => $lectura_id]);
+    flotilla_odometro_recalcular_km_actual((int) $l['vehiculo_id']);
+    return ['ok' => true, 'vid' => (int) $l['vehiculo_id']];
+}
+
+/**
+ * Edita el km de una lectura de odómetro (corrección de captura). Solo 'manual'
+ * o 'historico'. Recalcula km_actual. Devuelve ['ok'=>bool, 'vid'=>int, 'error'=>string].
+ */
+function flotilla_odometro_editar_lectura(int $lectura_id, int $km): array {
+    if ($km <= 0) return ['ok' => false, 'error' => 'El km debe ser mayor a 0.'];
+    if (!db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) return ['ok' => false, 'error' => 'No disponible.'];
+    $l = db_one("SELECT id, vehiculo_id, origen FROM flotilla_odometro_historial WHERE id = :id", ['id' => $lectura_id]);
+    if (!$l) return ['ok' => false, 'error' => 'Lectura no encontrada.'];
+    if (!in_array((string) $l['origen'], ['manual', 'historico'], true)) {
+        return ['ok' => false, 'error' => 'Solo se pueden editar lecturas manuales o históricas.'];
+    }
+    db_exec("UPDATE flotilla_odometro_historial SET km = :km WHERE id = :id", ['km' => $km, 'id' => $lectura_id]);
+    flotilla_odometro_recalcular_km_actual((int) $l['vehiculo_id']);
+    return ['ok' => true, 'vid' => (int) $l['vehiculo_id']];
+}
+
+/**
+ * Elimina un viaje (en ruta o completado). Si estaba completado, quita también la
+ * lectura de odómetro 'viaje' que generó (mejor esfuerzo) y recalcula km_actual.
+ * Devuelve ['ok'=>bool, 'vid'=>int].
+ */
+function flotilla_viaje_eliminar(int $viaje_id): array {
+    if (!db_one("SHOW TABLES LIKE 'flotilla_viajes'")) return ['ok' => false];
+    $vj = db_one("SELECT id, vehiculo_id, estado, km_llegada, fecha_llegada FROM flotilla_viajes WHERE id = :id", ['id' => $viaje_id]);
+    if (!$vj) return ['ok' => false];
+    $vid = (int) $vj['vehiculo_id'];
+
+    if (($vj['estado'] ?? '') === 'completado' && $vj['km_llegada'] !== null
+        && db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+        $km_ll = (int) round((float) $vj['km_llegada']);
+        $lect  = db_one(
+            "SELECT id FROM flotilla_odometro_historial
+              WHERE vehiculo_id = :v AND origen = 'viaje' AND km = :km
+              ORDER BY ABS(TIMESTAMPDIFF(SECOND, leido_en, :f)) ASC, id DESC
+              LIMIT 1",
+            ['v' => $vid, 'km' => $km_ll, 'f' => $vj['fecha_llegada'] ?? date('Y-m-d H:i:s')]
+        );
+        if ($lect) db_exec("DELETE FROM flotilla_odometro_historial WHERE id = :id", ['id' => (int) $lect['id']]);
+    }
+
+    db_exec("DELETE FROM flotilla_viajes WHERE id = :id", ['id' => $viaje_id]);
+    flotilla_odometro_recalcular_km_actual($vid);
+    return ['ok' => true, 'vid' => $vid];
+}
+
+/**
  * Resincroniza el odómetro de un vehículo a partir de sus cargas de combustible.
  * Reconstruye las lecturas de historial con origen 'combustible' (una por carga)
  * y recalcula km_actual solo con fuentes MANUALES (nunca GPS). Idempotente:

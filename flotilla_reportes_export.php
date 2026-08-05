@@ -106,33 +106,27 @@ $documentos = db_all(
      ORDER BY FIELD(d.estado,'vencido','por_vencer','vigente','cancelado'), d.fecha_vence"
 );
 
-// 6. Rendimiento y km por unidad (odómetro manual, sin GPS).
-$tiene_odo = (bool) db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'");
-$join_odo  = $tiene_odo
-    ? "LEFT JOIN (SELECT vehiculo_id, MAX(km) - MIN(km) km_periodo
-                  FROM flotilla_odometro_historial
-                  WHERE DATE(leido_en) BETWEEN :d2 AND :h2
-                    AND (origen IS NULL OR origen <> 'gps')
-                  GROUP BY vehiculo_id) o ON o.vehiculo_id = v.id"
-    : "";
-$km_expr  = $tiene_odo ? "COALESCE(MAX(o.km_periodo), SUM(c.km_recorridos), 0)"
-                       : "COALESCE(SUM(c.km_recorridos), 0)";
-$params_r = ['desde' => $desde, 'hasta' => $hasta];
-if ($tiene_odo) { $params_r['d2'] = $desde; $params_r['h2'] = $hasta; }
+// 6. Rendimiento y km por unidad (odómetro manual, sin GPS) — km robusto por avances.
+$km_map = flotilla_km_recorridos_periodo($desde, $hasta, $f_suc);
 $rendimiento = db_all(
-    "SELECT v.placas, COALESCE(v.alias,'') alias, CONCAT(v.marca,' ',v.modelo) modelo,
+    "SELECT v.id, v.placas, COALESCE(v.alias,'') alias, CONCAT(v.marca,' ',v.modelo) modelo,
             COUNT(c.id) cargas, ROUND(SUM(c.litros),1) litros,
             COALESCE(SUM(c.litros * c.precio_litro),0) costo_comb,
-            $km_expr km_rec
+            COALESCE(SUM(c.km_recorridos),0) km_cargas
      FROM flotilla_vehiculos v
      INNER JOIN flotilla_combustible c ON c.vehiculo_id = v.id AND DATE(c.fecha) BETWEEN :desde AND :hasta
-     $join_odo
      WHERE 1 $suf
      GROUP BY v.id
-     HAVING cargas >= 1
-     ORDER BY km_rec DESC",
-    $params_r
+     HAVING cargas >= 1",
+    ['desde' => $desde, 'hasta' => $hasta]
 );
+foreach ($rendimiento as &$r) {
+    $km = (int) ($km_map[(int) $r['id']] ?? 0);
+    if ($km <= 0) $km = (int) $r['km_cargas'];   // respaldo: km capturado por carga
+    $r['km_rec'] = $km;
+}
+unset($r);
+usort($rendimiento, fn($a, $b) => ((int) $b['km_rec'] <=> (int) $a['km_rec']));
 $flota_km    = array_sum(array_map(fn($r) => (int) $r['km_rec'], $rendimiento));
 $flota_litros= array_sum(array_map(fn($r) => (float) $r['litros'], $rendimiento));
 $flota_comb  = array_sum(array_map(fn($r) => (float) $r['costo_comb'], $rendimiento));
@@ -209,7 +203,7 @@ $xlsx->addHeaderRow(['', '', '', 'TOTALES', array_sum(array_column($por_vehiculo
 $xlsx->addSheet('Rendimiento x Unidad');
 $xlsx->addHeaderRow(['RENDIMIENTO Y KILOMETRAJE POR UNIDAD'], 5);
 $xlsx->addRow([$periodo_label]);
-$xlsx->addRow(['Km recorridos = odómetro (máx - mín) capturado a mano en el período · sin GPS']);
+$xlsx->addRow(['Km recorridos = odómetro (suma de avances consecutivos plausibles) capturado a mano · sin GPS']);
 $xlsx->addBlankRow();
 $xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Cargas', 'Litros', 'Km recorridos', 'Km/L', '$/L prom', 'Costo comb.', 'Costo/km'], 1);
 $tk = 0; $tl = 0.0; $tc = 0.0;

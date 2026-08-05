@@ -70,6 +70,32 @@ if (es_post() && $puede_gestionar) {
             exit;
         }
 
+        // --- Odómetro: editar lectura (corrección de captura) ---
+        if ($op === 'odo_editar') {
+            $res = flotilla_odometro_editar_lectura((int) input('lectura_id', 0), (int) input('km', 0));
+            flash_set($res['ok'] ? 'exito' : 'error',
+                $res['ok'] ? 'Lectura de odómetro corregida.' : ($res['error'] ?? 'No se pudo editar la lectura.'));
+            header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=info"));
+            exit;
+        }
+
+        // --- Odómetro: eliminar lectura ---
+        if ($op === 'odo_eliminar') {
+            $res = flotilla_odometro_eliminar_lectura((int) input('lectura_id', 0));
+            flash_set($res['ok'] ? 'exito' : 'error',
+                $res['ok'] ? 'Lectura de odómetro eliminada.' : ($res['error'] ?? 'No se pudo eliminar la lectura.'));
+            header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=info"));
+            exit;
+        }
+
+        // --- Viaje: eliminar (en ruta o completado) ---
+        if ($op === 'viaje_eliminar') {
+            $res = flotilla_viaje_eliminar((int) input('viaje_id', 0));
+            flash_set($res['ok'] ? 'exito' : 'error', $res['ok'] ? 'Viaje eliminado.' : 'No se pudo eliminar el viaje.');
+            header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=viajes"));
+            exit;
+        }
+
         // --- Documento ---
         if ($op === 'doc_crear') {
             $dd = [
@@ -1753,6 +1779,15 @@ require_once __DIR__ . '/config/header.php';
                         <?php else: ?>
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-600">Completado</span>
                         <?php endif; ?>
+                        <?php if ($puede_gestionar): ?>
+                        <form method="POST" class="inline-block" onsubmit="return confirm('¿Eliminar este viaje? Esta acción no se puede deshacer.');">
+                            <?= csrf_input() ?>
+                            <input type="hidden" name="op" value="viaje_eliminar">
+                            <input type="hidden" name="viaje_id" value="<?= $v['id'] ?>">
+                            <button type="submit" title="Eliminar viaje"
+                                    class="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php if ($en_ruta && $puede_gestionar): ?>
@@ -2230,6 +2265,9 @@ function abrirCerrarMantV(id, fechaInicio, costo, nombre){
                         <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Km</th>
                         <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recorrido</th>
                         <th class="px-4 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Origen</th>
+                        <?php if ($puede_gestionar): ?>
+                        <th class="px-4 py-2 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider"></th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100">
@@ -2248,6 +2286,29 @@ function abrirCerrarMantV(id, fechaInicio, costo, nombre){
                             <?= e($orig_txt) ?>
                             <?php if (!empty($oh['usuario_nombre'])): ?><span class="text-zinc-300">· <?= e($oh['usuario_nombre']) ?></span><?php endif; ?>
                         </td>
+                        <?php if ($puede_gestionar): ?>
+                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                            <?php if (in_array($orig, ['manual', 'historico'], true)): ?>
+                            <form method="POST" class="inline-block align-middle" onsubmit="return odoPedirKm(this)">
+                                <?= csrf_input() ?>
+                                <input type="hidden" name="op" value="odo_editar">
+                                <input type="hidden" name="lectura_id" value="<?= (int) $oh['id'] ?>">
+                                <input type="hidden" name="km" value="">
+                                <button type="submit" data-km="<?= (int) $oh['km'] ?>" title="Corregir km"
+                                        class="text-zinc-400 hover:text-bacal-700"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                            </form>
+                            <form method="POST" class="inline-block align-middle ml-1" onsubmit="return confirm('¿Eliminar esta lectura de odómetro? El km del vehículo se recalcula.');">
+                                <?= csrf_input() ?>
+                                <input type="hidden" name="op" value="odo_eliminar">
+                                <input type="hidden" name="lectura_id" value="<?= (int) $oh['id'] ?>">
+                                <button type="submit" title="Eliminar lectura"
+                                        class="text-zinc-400 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </form>
+                            <?php else: ?>
+                            <span class="text-[10px] text-zinc-300" title="Se corrige en su registro de origen (carga, viaje o mantenimiento)">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <?php endif; ?>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -2261,4 +2322,17 @@ function abrirCerrarMantV(id, fechaInicio, costo, nombre){
     </div>
 </div>
 
+<script>
+// Corregir el km de una lectura de odómetro (pide el nuevo valor y envía el formulario).
+function odoPedirKm(form) {
+    var btn = form.querySelector('button[type=submit]');
+    var actual = btn ? (btn.getAttribute('data-km') || '') : '';
+    var val = prompt('Nuevo valor del odómetro (km):', actual);
+    if (val === null) return false;
+    val = String(val).replace(/[^0-9]/g, '');
+    if (!val || parseInt(val, 10) <= 0) { alert('Captura un número válido mayor a 0.'); return false; }
+    form.querySelector('input[name=km]').value = val;
+    return true;
+}
+</script>
 <?php require_once __DIR__ . '/config/footer.php'; ?>
