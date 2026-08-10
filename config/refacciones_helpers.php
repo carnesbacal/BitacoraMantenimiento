@@ -526,3 +526,27 @@ function motivos_movimiento(): array {
         ],
     ];
 }
+
+
+/* ============================================================================
+ * FOTO REPRESENTATIVA DE LA REFACCIÓN (una sola, opcional) — tipo "perfil"
+ * ==========================================================================*/
+
+/** Guarda o reemplaza la foto representativa (columna foto_url). Borra la anterior. */
+function refaccion_foto_set(int $refaccion_id, array $file, ?int $uid): array {
+    $r = imagen_subir($file);
+    if ($r['error']) return ['ok' => false, 'error' => $r['error']];
+    if (!$r['ruta'])  return ['ok' => false, 'error' => null];   // no se envió archivo
+    $prev = db_one("SELECT foto_url FROM refacciones WHERE id = :r", ['r' => $refaccion_id]);
+    if ($prev && !empty($prev['foto_url'])) imagen_borrar_archivo($prev['foto_url']);
+    db_exec("UPDATE refacciones SET foto_url = :f WHERE id = :r", ['f' => $r['ruta'], 'r' => $refaccion_id]);
+    return ['ok' => true, 'error' => null];
+}
+
+/** Quita la foto representativa de la refacción (archivo + columna). */
+function refaccion_foto_quitar(int $refaccion_id): bool {
+    $prev = db_one("SELECT foto_url FROM refacciones WHERE id = :r", ['r' => $refaccion_id]);
+    if ($prev && !empty($prev['foto_url'])) imagen_borrar_archivo($prev['foto_url']);
+    db_exec("UPDATE refacciones SET foto_url = NULL WHERE id = :r", ['r' => $refaccion_id]);
+    return true;
+}

@@ -78,6 +78,7 @@ if (es_post() && $puede_gestionar) {
                 'numero_motor'          => trim((string) input('numero_motor', '')) ?: null,
                 'combustible_tipo'      => (string) input('combustible_tipo', 'diesel'),
                 'capacidad_carga_kg'    => (float) input('capacidad_carga_kg', 0) ?: null,
+                'capacidad_tanque_litros' => (float) input('capacidad_tanque_litros', 0) ?: null,
                 'tiene_refrigeracion'   => (int) input('tiene_refrigeracion', 0),
                 'temp_min_c'            => trim((string) input('temp_min_c', '')) !== '' ? (float) input('temp_min_c') : null,
                 'temp_max_c'            => trim((string) input('temp_max_c', '')) !== '' ? (float) input('temp_max_c') : null,
@@ -584,6 +585,12 @@ require_once __DIR__ . '/config/flotilla_nav.php';
                         <option value="electrico">Eléctrico</option>
                         <option value="hibrido">Híbrido</option>
                     </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Capacidad del tanque (L)</label>
+                    <input type="number" name="capacidad_tanque_litros" min="0" step="0.1" placeholder="Ej. 80"
+                           class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                 </div>
 
                 <?php if (tiene_permiso('ver_todas_sucursales') && $sucursales): ?>

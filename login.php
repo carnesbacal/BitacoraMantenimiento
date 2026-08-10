@@ -154,7 +154,7 @@ if (es_post()) {
                     B
                 </div>
                 <div>
-                    <img src="assets/img/logo-blanco.png" alt="Carnes Bacal" onerror="this.style.display='none'" class="h-7 w-auto">
+                    <img src="assets/img/logo-blanco.png" alt="<?= EMPRESA_NOMBRE ?>" onerror="this.style.display='none'" class="h-7 w-auto">
                     <div class="text-[11px] text-gold-400 uppercase tracking-widest font-semibold mt-1">SIGMA · Sistema Interno</div>
                 </div>
             </div>
@@ -188,7 +188,7 @@ if (es_post()) {
 
             <!-- Footer marca -->
             <div class="flex items-center justify-between text-xs text-white/50">
-                <div>© <?= date('Y') ?> Carnes Bacal. Uso interno.</div>
+                <div>© <?= date('Y') ?> <?= EMPRESA_NOMBRE ?>. Uso interno.</div>
                 <div class="flex items-center gap-4">
                     <span>Desarrollado por <span class="font-mono font-semibold text-white/75">&lt;LFRC/&gt;</span></span>
                     <span class="font-mono">v<?= APP_VERSION ?></span>
@@ -209,7 +209,7 @@ if (es_post()) {
                     B
                 </div>
                 <div>
-                    <div class="font-display font-bold text-lg text-zinc-900">Carnes Bacal</div>
+                    <div class="font-display font-bold text-lg text-zinc-900"><?= EMPRESA_NOMBRE ?></div>
                     <div class="text-[11px] text-bacal-700 uppercase tracking-widest font-semibold">Sistema Interno</div>
                 </div>
             </div>

@@ -499,6 +499,9 @@ if ($accion === 'nuevo' || ($accion === 'editar' && $equipo_edit)):
             <i data-lucide="x" class="w-3.5 h-3.5"></i> Limpiar
         </a>
         <?php endif; ?>
+        <a href="<?= url('etiquetas_lote.php?tipo=equipo') ?>" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm hover:bg-zinc-50 ml-auto">
+            <i data-lucide="qr-code" class="w-4 h-4"></i> Etiquetas QR
+        </a>
     </div>
 
     <div x-show="abierto" x-collapse x-cloak class="mt-3">

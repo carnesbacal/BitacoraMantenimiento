@@ -200,7 +200,7 @@ require_once __DIR__ . '/../config/header.php';
                 <summary class="cursor-pointer font-semibold text-bacal-700 hover:underline">Ver instrucciones</summary>
                 <div class="mt-3 space-y-2 leading-relaxed">
                     <p>1. Abre <strong>Programador de tareas</strong> (Win + R → <code class="font-mono bg-zinc-200 px-1">taskschd.msc</code>)</p>
-                    <p>2. Crear tarea básica: <code class="font-mono">Archivado Bitácora Carnes Bacal</code></p>
+                    <p>2. Crear tarea básica: <code class="font-mono">Archivado Bitácora <?= EMPRESA_NOMBRE ?></code></p>
                     <p>3. Activador: Diariamente a las 3:00 AM</p>
                     <p>4. Programa: <code class="font-mono bg-zinc-200 px-1">C:\xampp\php\php.exe</code></p>
                     <p>5. Argumentos: <code class="font-mono bg-zinc-200 px-1">"<?= e(str_replace('/', '\\', dirname(__DIR__))) ?>\cron\archivar_automatico.php"</code></p>

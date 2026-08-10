@@ -71,6 +71,18 @@ if (es_post() && $puede_gestionar) {
                     header('Location: ' . url("herramienta_ver.php?id=$id"));
                     exit;
                 }
+            } elseif ($op === 'foto_guardar') {
+                $r = herramienta_foto_set($id, $_FILES['foto'] ?? [], (int) $u['id']);
+                if ($r['ok'])        flash_set('success', 'Foto actualizada.');
+                elseif ($r['error']) flash_set('error', $r['error']);
+                else                 flash_set('error', 'Selecciona una imagen.');
+                header('Location: ' . url("herramienta_ver.php?id=$id"));
+                exit;
+            } elseif ($op === 'foto_quitar') {
+                herramienta_foto_quitar($id);
+                flash_set('success', 'Foto quitada.');
+                header('Location: ' . url("herramienta_ver.php?id=$id"));
+                exit;
             } elseif ($op === 'eliminar' && $es_admin) {
                 eliminar_herramienta($id);
                 flash_set('success', 'Herramienta eliminada.');
@@ -117,6 +129,11 @@ require_once __DIR__ . '/config/header.php';
             <i data-lucide="<?= e($est_lbl['icono']) ?>" class="w-4 h-4"></i>
             <?= e($est_lbl['label']) ?>
         </span>
+
+        <a href="<?= url('etiqueta.php?tipo=herramienta&id=' . $id) ?>" target="_blank"
+           class="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-semibold text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
+            <i data-lucide="qr-code" class="w-4 h-4"></i> Etiqueta QR
+        </a>
 
         <?php if ($puede_gestionar && $her['estado'] === 'disponible'): ?>
         <button onclick="document.getElementById('modal_prestamo').showModal()"
@@ -328,6 +345,43 @@ require_once __DIR__ . '/config/header.php';
 
         <!-- Sidebar -->
         <div class="space-y-4">
+            <!-- Foto representativa -->
+            <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
+                <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2 mb-3">
+                    <i data-lucide="image" class="w-4 h-4 text-bacal-700"></i> Foto
+                </h3>
+                <div class="aspect-square rounded-lg overflow-hidden border border-zinc-200 bg-zinc-50 flex items-center justify-center mb-3">
+                    <?php if (!empty($her['foto_url'])): ?>
+                    <a href="<?= url('assets/' . $her['foto_url']) ?>" target="_blank" class="block w-full h-full">
+                        <img src="<?= url('assets/' . $her['foto_url']) ?>" alt="Foto de <?= e($her['nombre']) ?>" class="w-full h-full object-cover" loading="lazy">
+                    </a>
+                    <?php else: ?>
+                    <i data-lucide="wrench" class="w-16 h-16 text-zinc-300"></i>
+                    <?php endif; ?>
+                </div>
+                <?php if ($puede_gestionar): ?>
+                <form method="POST" enctype="multipart/form-data" class="space-y-2">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="op" value="foto_guardar">
+                    <input type="file" name="foto" accept="image/*"
+                           class="block w-full text-xs text-zinc-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-bacal-50 file:text-bacal-700 hover:file:bg-bacal-100">
+                    <button type="submit" class="w-full px-3 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> <?= !empty($her['foto_url']) ? 'Cambiar foto' : 'Subir foto' ?>
+                    </button>
+                    <p class="text-[10px] text-zinc-400">Opcional · JPG, PNG, WEBP o GIF · reemplaza la anterior.</p>
+                </form>
+                <?php if (!empty($her['foto_url'])): ?>
+                <form method="POST" class="mt-1" onsubmit="return confirm('¿Quitar la foto?');">
+                    <?= csrf_input() ?>
+                    <input type="hidden" name="op" value="foto_quitar">
+                    <button type="submit" class="text-[11px] text-zinc-500 hover:text-red-600 inline-flex items-center gap-1">
+                        <i data-lucide="trash-2" class="w-3 h-3"></i> Quitar foto
+                    </button>
+                </form>
+                <?php endif; ?>
+                <?php endif; ?>
+            </div>
+
             <!-- Cambiar estado rápido -->
             <?php if ($puede_gestionar && $her['estado'] !== 'prestada'): ?>
             <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">

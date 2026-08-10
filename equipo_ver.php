@@ -169,6 +169,10 @@ require_once __DIR__ . '/config/header.php';
                class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
                 <i data-lucide="package" class="w-4 h-4"></i> Refacciones
             </a>
+            <a href="<?= url('etiqueta.php?tipo=equipo&id=' . $id) ?>" target="_blank"
+               class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">
+                <i data-lucide="qr-code" class="w-4 h-4"></i> Etiqueta QR
+            </a>
             <?php if ($puede_editar): ?>
             <button type="button" @click="mostrarTransferir = true"
                     class="px-3 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5">

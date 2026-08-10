@@ -100,13 +100,25 @@ require_once __DIR__ . '/config/header.php';
             <p class="text-xs text-zinc-500 mt-0.5">Catálogo de herramientas con sistema de préstamos.</p>
         </div>
 
-        <?php if ($puede_gestionar): ?>
-        <button onclick="document.getElementById('modal_nueva').showModal()"
-                class="px-4 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold flex items-center gap-1.5">
-            <i data-lucide="plus" class="w-4 h-4"></i>
-            Nueva herramienta
-        </button>
-        <?php endif; ?>
+        <div class="flex items-center gap-2 flex-wrap">
+            <a href="<?= url('herramientas_requisiciones.php') ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+                Requisiciones
+            </a>
+            <a href="<?= url('etiquetas_lote.php?tipo=herramienta') ?>"
+               class="px-3 py-2 rounded-lg border border-zinc-300 hover:bg-zinc-50 text-sm font-semibold text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="qr-code" class="w-4 h-4"></i>
+                Etiquetas QR
+            </a>
+            <?php if ($puede_gestionar): ?>
+            <button onclick="document.getElementById('modal_nueva').showModal()"
+                    class="px-4 py-2 rounded-lg bg-bacal-700 hover:bg-bacal-800 text-white text-sm font-semibold flex items-center gap-1.5">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                Nueva herramienta
+            </button>
+            <?php endif; ?>
+        </div>
     </div>
 
     <!-- Errores -->

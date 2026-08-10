@@ -43,6 +43,7 @@ if (es_post()) {
             'temp_min_c'            => trim((string) input('temp_min_c', '')) !== '' ? (float) input('temp_min_c', 0) : null,
             'temp_max_c'            => trim((string) input('temp_max_c', '')) !== '' ? (float) input('temp_max_c', 0) : null,
             'capacidad_carga_kg'    => trim((string) input('capacidad_carga_kg', '')) !== '' ? (float) input('capacidad_carga_kg', 0) : null,
+            'capacidad_tanque_litros' => trim((string) input('capacidad_tanque_litros', '')) !== '' ? (float) input('capacidad_tanque_litros', 0) : null,
             'km_inicial'            => (int) input('km_inicial', 0),
             'es_propio'             => (int) input('es_propio', 1),
             'proveedor_renta'       => trim((string) input('proveedor_renta', '')) ?: null,
@@ -71,6 +72,7 @@ if (es_post()) {
                 tiene_refrigeracion=:tiene_refrigeracion,
                 temp_min_c=:temp_min_c, temp_max_c=:temp_max_c,
                 capacidad_carga_kg=:capacidad_carga_kg,
+                capacidad_tanque_litros=:capacidad_tanque_litros,
                 km_inicial=:km_inicial, es_propio=:es_propio,
                 proveedor_renta=:proveedor_renta,
                 fecha_adquisicion=:fecha_adquisicion,
@@ -196,6 +198,11 @@ require_once __DIR__ . '/config/header.php';
                         <option value="<?= $v ?>" <?= ($vehiculo['combustible_tipo'] ?? '') === $v ? 'selected' : '' ?>><?= $l ?></option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-zinc-700 mb-1">Capacidad del tanque (L)</label>
+                    <input type="number" name="capacidad_tanque_litros" value="<?= e($vehiculo['capacidad_tanque_litros'] ?? '') ?>" min="0" step="0.1" placeholder="Ej. 80"
+                           class="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-zinc-700 mb-1">Sucursal</label>

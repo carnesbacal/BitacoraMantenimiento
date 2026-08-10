@@ -28,19 +28,23 @@ $db_name = 'carnes_bacal';
 $admin_user = 'admin';
 $admin_password = 'admin123';   // El sistema obligará a cambiarla en el primer login
 
+// Nombre de la empresa: centralizado en config/app.php, con respaldo si se ejecuta suelto.
+@include_once __DIR__ . '/../config/app.php';
+if (!defined('EMPRESA_NOMBRE')) define('EMPRESA_NOMBRE', 'Carnes Bacal');
+
 // --- HTML básico para la respuesta ---
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Setup - Carnes Bacal Bitácora</title>
+    <title>Setup - <?= EMPRESA_NOMBRE ?> Bitácora</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen py-10">
 <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
     <h1 class="text-3xl font-bold text-red-700 mb-2">Setup del Sistema</h1>
-    <p class="text-gray-600 mb-6">Carnes Bacal · Bitácora de Incidencias</p>
+    <p class="text-gray-600 mb-6"><?= EMPRESA_NOMBRE ?> · Bitácora de Incidencias</p>
     <div class="space-y-3 text-sm">
 <?php
 
@@ -150,7 +154,7 @@ if ($stmt->execute()) {
     </div>
 
     <div class="mt-4 text-center text-xs text-gray-500">
-        Carnes Bacal · Sistema de Bitácora de Incidencias
+        <?= EMPRESA_NOMBRE ?> · Sistema de Bitácora de Incidencias
     </div>
 </div>
 </body>

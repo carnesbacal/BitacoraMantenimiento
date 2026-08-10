@@ -32,7 +32,7 @@ $inicio = microtime(true);
 $fecha = date('Y-m-d H:i:s');
 
 echo "============================================================\n";
-echo "Backup automático - Carnes Bacal Bitácora\n";
+echo "Backup automático - " . EMPRESA_NOMBRE . " Bitácora\n";
 echo "Inicio: $fecha\n";
 echo "============================================================\n";
 

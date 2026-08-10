@@ -285,7 +285,7 @@ require_once __DIR__ . '/../config/header.php';
             <div class="mt-3 space-y-2 leading-relaxed">
                 <p>1. Abre el <strong>Programador de tareas</strong> de Windows (Win + R, escribe <code class="font-mono bg-zinc-200 px-1">taskschd.msc</code>).</p>
                 <p>2. Click derecho en "Biblioteca del programador de tareas" → <strong>Crear tarea básica</strong>.</p>
-                <p>3. Nombre: <code class="font-mono">Backup Bitácora Carnes Bacal</code>.</p>
+                <p>3. Nombre: <code class="font-mono">Backup Bitácora <?= EMPRESA_NOMBRE ?></code>.</p>
                 <p>4. Activador: <strong>Diariamente</strong>, hora sugerida 2:00 AM (sistema con poco uso).</p>
                 <p>5. Acción: <strong>Iniciar un programa</strong>.</p>
                 <p>6. Programa: <code class="font-mono bg-zinc-200 px-1">C:\xampp\php\php.exe</code></p>

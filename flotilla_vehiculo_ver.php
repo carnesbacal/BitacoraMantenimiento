@@ -889,6 +889,7 @@ require_once __DIR__ . '/config/header.php';
                 'Número de serie'  => $vehiculo['numero_serie'] ?? '—',
                 'Número de motor'  => $vehiculo['numero_motor'] ?? '—',
                 'Combustible'      => ucfirst($vehiculo['combustible_tipo']),
+                'Cap. tanque'      => !empty($vehiculo['capacidad_tanque_litros']) ? rtrim(rtrim(number_format((float) $vehiculo['capacidad_tanque_litros'], 1), '0'), '.') . ' L' : '—',
                 'Refrigeración'    => $vehiculo['tiene_refrigeracion'] ? "Sí ({$vehiculo['temp_min_c']}°C / {$vehiculo['temp_max_c']}°C)" : 'No',
                 'Cap. de carga'    => $vehiculo['capacidad_carga_kg'] ? number_format($vehiculo['capacidad_carga_kg']) . ' kg' : '—',
                 'Km inicial'       => number_format($vehiculo['km_inicial']) . ' km',

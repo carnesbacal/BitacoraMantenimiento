@@ -72,7 +72,7 @@ if (es_post()) {
                 B
             </div>
             <div>
-                <div class="font-display font-bold text-lg text-zinc-900">Carnes Bacal</div>
+                <div class="font-display font-bold text-lg text-zinc-900"><?= EMPRESA_NOMBRE ?></div>
                 <div class="text-[10px] text-bacal-700 uppercase tracking-widest font-semibold">Sistema Interno</div>
             </div>
         </div>

@@ -281,3 +281,37 @@ function render_avatar(?array $usuario, string $tamano = 'w-8 h-8', string $clas
         $tamano, $clase_texto, $clases_extra, htmlspecialchars($color, ENT_QUOTES, 'UTF-8'), $iniciales_e
     );
 }
+
+
+/**
+ * Guarda una imagen subida (solo imágenes). Genérico y reutilizable.
+ * Devuelve ['ruta'=>?string, 'error'=>?string]. Ruta relativa: "uploads/AAAA/MM/archivo".
+ * Si no se envió archivo, devuelve ['ruta'=>null,'error'=>null] (no es error: es opcional).
+ */
+function imagen_subir(array $file, int $max_mb = 15): array {
+    $err = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($err === UPLOAD_ERR_NO_FILE || empty($file['name'])) return ['ruta' => null, 'error' => null];
+    if ($err !== UPLOAD_ERR_OK) return ['ruta' => null, 'error' => 'No se pudo subir la imagen.'];
+    if ((int) ($file['size'] ?? 0) > $max_mb * 1024 * 1024) return ['ruta' => null, 'error' => "La imagen excede el tamaño máximo ({$max_mb} MB)."];
+    $info = @getimagesize($file['tmp_name']);
+    if ($info === false || empty($info['mime'])
+        || !in_array($info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        return ['ruta' => null, 'error' => 'El archivo debe ser una imagen (JPG, PNG, WEBP o GIF).'];
+    }
+    $sub = date('Y/m');
+    $dir = __DIR__ . '/../assets/uploads/' . $sub;
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    $ext = preg_replace('/[^a-z0-9]/i', '', strtolower(pathinfo($file['name'], PATHINFO_EXTENSION))) ?: 'jpg';
+    $nombre = 'img_' . bin2hex(random_bytes(12)) . ".$ext";
+    if (!move_uploaded_file($file['tmp_name'], "$dir/$nombre")) {
+        return ['ruta' => null, 'error' => 'No se pudo guardar la imagen en el servidor.'];
+    }
+    return ['ruta' => "uploads/$sub/$nombre", 'error' => null];
+}
+
+/** Borra el archivo físico de una imagen previamente guardada (ruta relativa "uploads/..."). */
+function imagen_borrar_archivo(?string $ruta): void {
+    if (!$ruta) return;
+    $fs = __DIR__ . '/../assets/' . ltrim($ruta, '/');
+    if (is_file($fs)) @unlink($fs);
+}

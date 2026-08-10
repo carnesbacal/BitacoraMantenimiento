@@ -458,3 +458,27 @@ function etiqueta_estado_herramienta(string $estado): array {
         default         => ['label' => $estado,         'color' => '#71717A', 'icono' => 'circle'],
     };
 }
+
+
+/* ============================================================================
+ * FOTO REPRESENTATIVA DE LA HERRAMIENTA (una sola, opcional) — tipo "perfil"
+ * ==========================================================================*/
+
+/** Guarda o reemplaza la foto representativa (columna foto_url). Borra la anterior. */
+function herramienta_foto_set(int $herramienta_id, array $file, ?int $uid): array {
+    $r = imagen_subir($file);
+    if ($r['error']) return ['ok' => false, 'error' => $r['error']];
+    if (!$r['ruta'])  return ['ok' => false, 'error' => null];
+    $prev = db_one("SELECT foto_url FROM herramientas WHERE id = :h", ['h' => $herramienta_id]);
+    if ($prev && !empty($prev['foto_url'])) imagen_borrar_archivo($prev['foto_url']);
+    db_exec("UPDATE herramientas SET foto_url = :f WHERE id = :h", ['f' => $r['ruta'], 'h' => $herramienta_id]);
+    return ['ok' => true, 'error' => null];
+}
+
+/** Quita la foto representativa de la herramienta (archivo + columna). */
+function herramienta_foto_quitar(int $herramienta_id): bool {
+    $prev = db_one("SELECT foto_url FROM herramientas WHERE id = :h", ['h' => $herramienta_id]);
+    if ($prev && !empty($prev['foto_url'])) imagen_borrar_archivo($prev['foto_url']);
+    db_exec("UPDATE herramientas SET foto_url = NULL WHERE id = :h", ['h' => $herramienta_id]);
+    return true;
+}

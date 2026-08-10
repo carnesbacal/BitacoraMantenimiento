@@ -78,7 +78,7 @@ function reporte_doc_header(string $titulo, string $subtitulo = '', ?string $usu
                     <?php endif; ?>
                 </td>
                 <td style="text-align:right;vertical-align:top;font-size:11px;color:#52525b;">
-                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; Carnes Bacal</div>
+                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; <?= EMPRESA_NOMBRE ?></div>
                     <div>Generado: <?= date('d/m/Y H:i') ?></div>
                     <?php if ($usuario): ?><div>Por: <?= e($usuario) ?></div><?php endif; ?>
                 </td>

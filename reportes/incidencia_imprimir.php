@@ -45,7 +45,7 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title><?= e($i['folio']) ?> · Carnes Bacal</title>
+    <title><?= e($i['folio']) ?> · <?= EMPRESA_NOMBRE ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -88,7 +88,7 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
                 B
             </div>
             <div>
-                <div class="font-display text-2xl font-extrabold text-zinc-900">Carnes Bacal</div>
+                <div class="font-display text-2xl font-extrabold text-zinc-900"><?= EMPRESA_NOMBRE ?></div>
                 <div class="text-[11px] text-zinc-500 uppercase tracking-widest">Reporte de Incidencia</div>
             </div>
         </div>
@@ -417,7 +417,7 @@ registrar_auditoria('exportar_incidencia_pdf', 'incidencias', $id, "Exportó {$i
 
     <!-- Pie -->
     <div class="mt-8 pt-4 border-t-2 border-zinc-900 flex items-center justify-between text-[10px] text-zinc-500">
-        <div>Carnes Bacal · Sistema de Bitácora de Incidencias</div>
+        <div><?= EMPRESA_NOMBRE ?> · Sistema de Bitácora de Incidencias</div>
         <div>Documento generado automáticamente · <?= date('Y-m-d H:i') ?></div>
     </div>
 </div>

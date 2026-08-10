@@ -416,7 +416,7 @@ require_once __DIR__ . '/../config/header.php';
                     <div style="font-size:12px;color:#52525b;margin-top:2px;"><?= e($periodo['etiqueta']) ?> &middot; <?= e($suc_label) ?></div>
                 </td>
                 <td style="text-align:right;vertical-align:top;font-size:11px;color:#52525b;">
-                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; Carnes Bacal</div>
+                    <div style="font-size:13px;font-weight:800;color:#E94E1B;">SIGMA &middot; <?= EMPRESA_NOMBRE ?></div>
                     <div>Generado: <?= date('d/m/Y H:i') ?></div>
                     <?php if ($rep_user): ?><div>Por: <?= e($rep_user) ?></div><?php endif; ?>
                 </td>

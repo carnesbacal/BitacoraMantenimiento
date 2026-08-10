@@ -8,7 +8,9 @@
  * ============================================================================
  */
 
-define('APP_NAME',    'SIGMA · Carnes Bacal');
+define('EMPRESA_NOMBRE', 'Carnes Bacal');
+define('EMPRESA_CORTO',  'CB');
+define('APP_NAME',    'SIGMA · ' . EMPRESA_NOMBRE);
 define('APP_VERSION', '2.0.19');
 
 $_protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
