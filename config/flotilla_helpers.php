@@ -418,6 +418,111 @@ function flotilla_odometro_editar_lectura(int $lectura_id, int $km): array {
     return ['ok' => true, 'vid' => (int) $l['vehiculo_id']];
 }
 
+/** ¿La columna existe en flotilla_viajes? (cache estático). Para tolerar la migración pendiente. */
+function flotilla_viajes_col(string $col): bool {
+    static $cache = [];
+    if (array_key_exists($col, $cache)) return $cache[$col];
+    try {
+        $cache[$col] = (bool) db_one(
+            "SELECT 1 FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='flotilla_viajes' AND COLUMN_NAME=:c",
+            ['c' => $col]
+        );
+    } catch (Throwable $e) { $cache[$col] = false; }
+    return $cache[$col];
+}
+
+/** Clientes a los que se entregó en un viaje (lista estructurada). */
+function flotilla_viaje_clientes(int $viaje_id): array {
+    if (!db_one("SHOW TABLES LIKE 'flotilla_viaje_clientes'")) return [];
+    return db_all("SELECT * FROM flotilla_viaje_clientes WHERE viaje_id = :v ORDER BY orden, id", ['v' => $viaje_id]);
+}
+
+/** Reemplaza los clientes de un viaje con la lista dada (arreglo de strings). */
+function flotilla_viaje_clientes_guardar(int $viaje_id, array $clientes): void {
+    if (!db_one("SHOW TABLES LIKE 'flotilla_viaje_clientes'")) return;
+    db_exec("DELETE FROM flotilla_viaje_clientes WHERE viaje_id = :v", ['v' => $viaje_id]);
+    $orden = 0;
+    foreach ($clientes as $c) {
+        $c = trim((string) $c);
+        if ($c === '') continue;
+        $orden++;
+        db_exec("INSERT INTO flotilla_viaje_clientes (viaje_id, cliente, orden) VALUES (:v, :c, :o)",
+            ['v' => $viaje_id, 'c' => mb_substr($c, 0, 200), 'o' => $orden]);
+    }
+}
+
+/** Nombre a mostrar del repartidor de un viaje (registrado o libre). */
+function flotilla_viaje_repartidor(array $v): string {
+    if (!empty($v['repartidor_registrado'])) return (string) $v['repartidor_registrado'];  // alias del JOIN
+    if (!empty($v['conductor_nombre']))      return (string) $v['conductor_nombre'];        // alias alterno
+    if (!empty($v['repartidor_nombre']))     return (string) $v['repartidor_nombre'];
+    return '';
+}
+
+/**
+ * Registra la SALIDA de un viaje (estado en_ruta) y sus clientes. Devuelve el id.
+ * $d: vehiculo_id, km_salida, fecha_salida (datetime), [nombre], [conductor_id],
+ *     [repartidor_nombre], [observaciones], [creado_por].
+ */
+function flotilla_viaje_crear(array $d, array $clientes = []): int {
+    $vd = [
+        'vehiculo_id'  => (int) ($d['vehiculo_id'] ?? 0),
+        'conductor_id' => !empty($d['conductor_id']) ? (int) $d['conductor_id'] : null,
+        'fecha_salida' => $d['fecha_salida'] ?? date('Y-m-d H:i:s'),
+        'km_salida'    => (int) round((float) ($d['km_salida'] ?? 0)),
+        'estado'       => 'en_ruta',
+        'observaciones'=> !empty($d['observaciones']) ? trim((string) $d['observaciones']) : null,
+        'creado_por'   => !empty($d['creado_por']) ? (int) $d['creado_por'] : null,
+    ];
+    // Campos nuevos: solo si la migración ya corrió (tolerante).
+    if (flotilla_viajes_col('nombre')) {
+        $vd['nombre'] = !empty($d['nombre']) ? mb_substr(trim((string) $d['nombre']), 0, 150) : null;
+    }
+    if (flotilla_viajes_col('repartidor_nombre')) {
+        $vd['repartidor_nombre'] = !empty($d['repartidor_nombre']) ? mb_substr(trim((string) $d['repartidor_nombre']), 0, 120) : null;
+    }
+    $cols = implode(',', array_keys($vd));
+    $phs  = ':' . implode(',:', array_keys($vd));
+    db_exec("INSERT INTO flotilla_viajes ($cols) VALUES ($phs)", $vd);
+    $vid = (int) db_last_id();
+    if ($clientes) flotilla_viaje_clientes_guardar($vid, $clientes);
+    return $vid;
+}
+
+/**
+ * Cierra un viaje en ruta con la LLEGADA (km + hora). Compone fecha_llegada a
+ * partir de la fecha de salida + la hora (maneja cruce de medianoche) y actualiza
+ * el odómetro del vehículo. Devuelve true si cerró.
+ */
+function flotilla_viaje_cerrar_llegada(int $viaje_id, int $vehiculo_id, float $km_llegada, ?string $hora_llegada, int $usuario_id): bool {
+    $vj = db_one("SELECT id, fecha_salida FROM flotilla_viajes WHERE id = :id AND vehiculo_id = :vid AND estado = 'en_ruta'",
+        ['id' => $viaje_id, 'vid' => $vehiculo_id]);
+    if (!$vj || $km_llegada <= 0) return false;
+
+    $base = date('Y-m-d', strtotime((string) $vj['fecha_salida']));
+    $hora = trim((string) $hora_llegada);
+    if ($hora !== '') {
+        $fll = $base . ' ' . $hora . ':00';
+        if (strtotime($fll) < strtotime((string) $vj['fecha_salida'])) {
+            $fll = date('Y-m-d H:i:s', strtotime($fll . ' +1 day'));   // llegó al día siguiente
+        }
+    } else {
+        $fll = date('Y-m-d H:i:s');
+    }
+
+    db_exec("UPDATE flotilla_viajes SET km_llegada = :km, fecha_llegada = :fll, estado = 'completado' WHERE id = :id",
+        ['km' => (int) round($km_llegada), 'fll' => $fll, 'id' => $viaje_id]);
+
+    $veh = db_one("SELECT km_actual FROM flotilla_vehiculos WHERE id = :id", ['id' => $vehiculo_id]);
+    if ($veh && $km_llegada > (int) $veh['km_actual']) {
+        db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
+            ['km' => (int) round($km_llegada), 'id' => $vehiculo_id, 'km2' => (int) round($km_llegada)]);
+        flotilla_odometro_registrar($vehiculo_id, (int) round($km_llegada), 'viaje', (int) $veh['km_actual'], $usuario_id);
+    }
+    return true;
+}
+
 /**
  * Elimina un viaje (en ruta o completado). Si estaba completado, quita también la
  * lectura de odómetro 'viaje' que generó (mejor esfuerzo) y recalcula km_actual.

@@ -22,18 +22,37 @@ class XlsxWriter
     // 0 = normal, 1 = header (negrita, fondo gris), 2 = número, 3 = moneda, 4 = fecha, 5 = header_dark
     private const STYLE_NORMAL      = 0;
     private const STYLE_HEADER      = 1;
-    private const STYLE_NUMBER      = 2;
-    private const STYLE_CURRENCY    = 3;
+    private const STYLE_NUMBER      = 2;  // entero #,##0 (km, conteos)
+    private const STYLE_CURRENCY    = 3;  // moneda "$"#,##0.00 (número real, sumable)
     private const STYLE_DATE        = 4;
     private const STYLE_HEADER_DARK = 5;
+    private const STYLE_DEC1        = 6;  // 1 decimal #,##0.0 (litros)
+    private const STYLE_DEC2        = 7;  // 2 decimales #,##0.00 (km/L, razones)
+    private const STYLE_PCT         = 8;  // porcentaje 0.0"%" (número real)
 
     public function addSheet(string $name): void
     {
         $this->sheets[] = [
-            'name' => $name,
-            'rows' => [],
+            'name'   => $name,
+            'rows'   => [],
+            'fitW'   => 1,            // ancho: ajustar a 1 página (no corta columnas al imprimir)
+            'fitH'   => 0,            // alto: 0 = fluye a las páginas necesarias
+            'orient' => 'landscape',  // horizontal por defecto
         ];
         $this->sheetIndex = count($this->sheets) - 1;
+    }
+
+    /**
+     * Configura la impresión de la hoja activa.
+     * $fitW/$fitH = número de páginas a las que ajustar (1 = una página; 0 = sin límite en ese eje).
+     * Para "todo en una hoja" usa setPageSetup(1, 1).
+     */
+    public function setPageSetup(int $fitW = 1, int $fitH = 1, string $orient = 'landscape'): void
+    {
+        if (empty($this->sheets)) $this->addSheet('Hoja 1');
+        $this->sheets[$this->sheetIndex]['fitW']   = max(0, $fitW);
+        $this->sheets[$this->sheetIndex]['fitH']   = max(0, $fitH);
+        $this->sheets[$this->sheetIndex]['orient'] = in_array($orient, ['portrait', 'landscape'], true) ? $orient : 'landscape';
     }
 
     /**
@@ -191,10 +210,19 @@ class XlsxWriter
             $rowsXml .= '</row>';
         }
 
+        $fitW = (int) ($sheet['fitW'] ?? 1);
+        $fitH = (int) ($sheet['fitH'] ?? 0);
+        $orient = ($sheet['orient'] ?? 'landscape') === 'portrait' ? 'portrait' : 'landscape';
+        $sheetPr = ($fitW || $fitH) ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : '';
+        $pageXml = '<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>'
+            . '<pageSetup orientation="' . $orient . '" fitToWidth="' . $fitW . '" fitToHeight="' . $fitH . '"/>';
+
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . $sheetPr
             . $colsXml
             . '<sheetData>' . $rowsXml . '</sheetData>'
+            . $pageXml
             . '</worksheet>';
     }
 
@@ -271,9 +299,12 @@ class XlsxWriter
         // xf 5 = header dark (bold, bg oscuro, texto blanco)
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<numFmts count="2">'
-            . '<numFmt numFmtId="164" formatCode="#,##0.00"/>'
+            . '<numFmts count="5">'
+            . '<numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/>'
             . '<numFmt numFmtId="165" formatCode="DD/MM/YYYY"/>'
+            . '<numFmt numFmtId="166" formatCode="#,##0.0"/>'
+            . '<numFmt numFmtId="167" formatCode="#,##0.00"/>'
+            . '<numFmt numFmtId="168" formatCode="0.0&quot;%&quot;"/>'
             . '</numFmts>'
             . '<fonts count="3">'
             . '<font><sz val="11"/><name val="Calibri"/></font>'
@@ -295,19 +326,25 @@ class XlsxWriter
             . '<diagonal/></border>'
             . '</borders>'
             . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            . '<cellXfs count="6">'
+            . '<cellXfs count="9">'
             // 0: normal
             . '<xf numFmtId="0"   fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>'
             // 1: header gris
             . '<xf numFmtId="0"   fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
             // 2: número entero
             . '<xf numFmtId="3"   fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
-            // 3: moneda
+            // 3: moneda ("$"#,##0.00)
             . '<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
             // 4: fecha
             . '<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
             // 5: header dark
             . '<xf numFmtId="0"   fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+            // 6: 1 decimal (#,##0.0)
+            . '<xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
+            // 7: 2 decimales (#,##0.00)
+            . '<xf numFmtId="167" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
+            // 8: porcentaje (0.0"%")
+            . '<xf numFmtId="168" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyNumberFormat="1"/>'
             . '</cellXfs>'
             . '</styleSheet>';
     }

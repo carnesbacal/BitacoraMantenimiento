@@ -28,6 +28,16 @@ if (!tiene_permiso('ver_todas_sucursales')) {
 
 $suf = $f_suc ? " AND v.sucursal_id = {$f_suc}" : '';
 
+// Celdas numéricas SUMABLES: la unidad va en el encabezado (km, L, km/L) o en el
+// formato de moneda ($). El valor de cada celda es un número real.
+$money = fn($v) => ['v' => round((float) $v, 2), 's' => 3];   // pesos "$"#,##0.00
+$f_lts = fn($v) => ['v' => round((float) $v, 1), 's' => 6];   // litros #,##0.0
+$f_km  = fn($v) => ['v' => (int) round((float) $v), 's' => 2]; // km #,##0
+$f_kml = fn($v) => ['v' => round((float) $v, 2), 's' => 7];   // km/L
+$f_pkm = fn($v) => ['v' => round((float) $v, 2), 's' => 3];   // $/km (moneda)
+$f_pl  = fn($v) => ['v' => round((float) $v, 2), 's' => 3];   // $/L (moneda)
+$f_pct = fn($v) => ['v' => round((float) $v, 1), 's' => 8];   // porcentaje
+
 // ── Datos ────────────────────────────────────────────────────────────────────
 
 // 1. Gastos detallados
@@ -140,6 +150,7 @@ $gen_label     = "Generado: " . date('d/m/Y H:i') . " por {$u['nombre']}";
 
 // ── Hoja 1: Resumen ─────────────────────────────────────────────────────────
 $xlsx->addSheet('Resumen');
+$xlsx->setPageSetup(1, 1);
 $xlsx->addHeaderRow(['REPORTE DE FLOTILLA VEHICULAR'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addRow([$gen_label]);
@@ -152,16 +163,16 @@ $total_mant   = array_sum(array_column($mantenimientos, 'costo'));
 
 $xlsx->addHeaderRow(['Indicador', 'Valor'], 1);
 $xlsx->addRow(['Total registros de gasto',          count($gastos)]);
-$xlsx->addRow(['Gasto total del período',           $total_gastos]);
-$xlsx->addRow(['Gasto en combustible',              $total_comb]);
-$xlsx->addRow(['Gasto en mantenimiento',            $total_mant]);
-$xlsx->addRow(['Litros de combustible cargados',    round($total_litros, 2)]);
+$xlsx->addRow(['Gasto total del período',           $money($total_gastos)]);
+$xlsx->addRow(['Gasto en combustible',              $money($total_comb)]);
+$xlsx->addRow(['Gasto en mantenimiento',            $money($total_mant)]);
+$xlsx->addRow(['Litros de combustible cargados (L)', $f_lts($total_litros)]);
 $xlsx->addRow(['Cargas de combustible registradas', count($combustible)]);
 $xlsx->addRow(['Servicios de mantenimiento',        count($mantenimientos)]);
 $xlsx->addRow(['Vehículos con actividad',           count($por_vehiculo)]);
-$xlsx->addRow(['Km recorridos (capturas manuales)',  $flota_km]);
-$xlsx->addRow(['Rendimiento de flota (km/L)',        ($flota_km > 0 && $flota_litros > 0) ? round($flota_km / $flota_litros, 2) : '']);
-$xlsx->addRow(['Costo por km (combustible)',         $flota_km > 0 ? round($flota_comb / $flota_km, 2) : '']);
+$xlsx->addRow(['Km recorridos (km, capturas manuales)', $flota_km > 0 ? $f_km($flota_km) : '—']);
+$xlsx->addRow(['Rendimiento de flota (km/L)',        ($flota_km > 0 && $flota_litros > 0) ? $f_kml($flota_km / $flota_litros) : '—']);
+$xlsx->addRow(['Costo por km (combustible, $/km)',   $flota_km > 0 ? $f_pkm($flota_comb / $flota_km) : '—']);
 $xlsx->addBlankRow();
 
 // Resumen por categoría
@@ -176,7 +187,23 @@ foreach ($gastos as $g) {
 arsort($por_cat);
 foreach ($por_cat as $cat => $d) {
     $pct = $total_gastos > 0 ? round($d['total'] / $total_gastos * 100, 1) : 0;
-    $xlsx->addRow([$cat, $d['total'], $pct . '%', $d['registros']]);
+    $xlsx->addRow([$cat, $money($d['total']), $f_pct($pct), $d['registros']]);
+}
+
+// Gasto por mes
+$xlsx->addBlankRow();
+$xlsx->addHeaderRow(['GASTO POR MES'], 5);
+$xlsx->addHeaderRow(['Mes', 'Combustible', 'Mantenimiento', 'Total'], 1);
+foreach (db_all(
+    "SELECT DATE_FORMAT(g.fecha,'%Y-%m') periodo, SUM(g.monto) total,
+            SUM(CASE WHEN cat.nombre LIKE '%Combustible%' THEN g.monto ELSE 0 END) comb,
+            SUM(CASE WHEN cat.nombre LIKE '%Mantenimiento%' OR cat.nombre LIKE '%Refacc%' THEN g.monto ELSE 0 END) mant
+       FROM flotilla_gastos g
+       INNER JOIN flotilla_categorias_gasto cat ON g.categoria_id = cat.id
+       INNER JOIN flotilla_vehiculos v ON g.vehiculo_id = v.id
+      WHERE g.fecha BETWEEN :d AND :h $suf GROUP BY periodo ORDER BY periodo",
+    ['d' => $desde, 'h' => $hasta]) as $tm) {
+    $xlsx->addRow([$tm['periodo'], $money($tm['comb']), $money($tm['mant']), $money($tm['total'])]);
 }
 
 // ── Hoja 2: Por vehículo ─────────────────────────────────────────────────────
@@ -184,20 +211,20 @@ $xlsx->addSheet('Por Vehículo');
 $xlsx->addHeaderRow(['GASTO POR VEHÍCULO'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Km actual', 'Gasto total', 'Combustible', 'Mantenimiento', 'Multas', 'Registros'], 1);
+$xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Km actual (km)', 'Gasto total ($)', 'Combustible ($)', 'Mantenimiento ($)', 'Multas ($)', 'Registros'], 1);
 foreach ($por_vehiculo as $vg) {
     $xlsx->addRow([
         $vg['placas'], $vg['alias'], $vg['modelo'],
-        (int)$vg['km_actual'],
-        (float)$vg['gasto_total'],
-        (float)$vg['combustible'],
-        (float)$vg['mantenimiento'],
-        (float)$vg['multas'],
+        (int)$vg['km_actual'] > 0 ? $f_km($vg['km_actual']) : '',
+        $money($vg['gasto_total']),
+        $money($vg['combustible']),
+        $money($vg['mantenimiento']),
+        $money($vg['multas']),
         (int)$vg['registros'],
     ]);
 }
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['', '', '', 'TOTALES', array_sum(array_column($por_vehiculo, 'gasto_total'))], 1);
+$xlsx->addHeaderRow(['', '', '', 'TOTALES', $money(array_sum(array_column($por_vehiculo, 'gasto_total')))], 1);
 
 // ── Hoja: Rendimiento por unidad ─────────────────────────────────────────────
 $xlsx->addSheet('Rendimiento x Unidad');
@@ -205,7 +232,7 @@ $xlsx->addHeaderRow(['RENDIMIENTO Y KILOMETRAJE POR UNIDAD'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addRow(['Km recorridos = odómetro (suma de avances consecutivos plausibles) capturado a mano · sin GPS']);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Cargas', 'Litros', 'Km recorridos', 'Km/L', '$/L prom', 'Costo comb.', 'Costo/km'], 1);
+$xlsx->addHeaderRow(['Placas', 'Alias', 'Modelo', 'Cargas', 'Litros (L)', 'Km recorridos (km)', 'Rendimiento (km/L)', 'Precio prom. ($/L)', 'Costo comb. ($)', 'Costo/km ($/km)'], 1);
 $tk = 0; $tl = 0.0; $tc = 0.0;
 foreach ($rendimiento as $r) {
     $km  = (int) $r['km_rec'];
@@ -214,21 +241,21 @@ foreach ($rendimiento as $r) {
     $tk += $km; $tl += $lit; $tc += $cc;
     $xlsx->addRow([
         $r['placas'], $r['alias'], $r['modelo'],
-        (int) $r['cargas'], $lit,
-        $km > 0 ? $km : '',
-        ($km > 0 && $lit > 0) ? round($km / $lit, 2) : '',
-        $lit > 0 ? round($cc / $lit, 2) : '',
-        $cc,
-        $km > 0 ? round($cc / $km, 2) : '',
+        (int) $r['cargas'], $f_lts($lit),
+        $km > 0 ? $f_km($km) : '',
+        ($km > 0 && $lit > 0) ? $f_kml($km / $lit) : '',
+        $lit > 0 ? $f_pl($cc / $lit) : '',
+        $money($cc),
+        $km > 0 ? $f_pkm($cc / $km) : '',
     ]);
 }
 $xlsx->addBlankRow();
 $xlsx->addRow([
-    '', '', 'TOTALES / FLOTA', '', round($tl, 1),
-    $tk > 0 ? $tk : '',
-    ($tk > 0 && $tl > 0) ? round($tk / $tl, 2) : '',
-    '', round($tc, 2),
-    $tk > 0 ? round($tc / $tk, 2) : '',
+    '', '', 'TOTALES / FLOTA', '', $f_lts($tl),
+    $tk > 0 ? $f_km($tk) : '',
+    ($tk > 0 && $tl > 0) ? $f_kml($tk / $tl) : '',
+    '', $money($tc),
+    $tk > 0 ? $f_pkm($tc / $tk) : '',
 ]);
 
 // ── Hoja 3: Gastos detallados ────────────────────────────────────────────────
@@ -236,7 +263,7 @@ $xlsx->addSheet('Gastos');
 $xlsx->addHeaderRow(['DETALLE DE GASTOS'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Vehículo', 'Categoría', 'Concepto', 'Monto', 'Proveedor', 'Factura', 'Km'], 1);
+$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Vehículo', 'Categoría', 'Concepto', 'Monto ($)', 'Proveedor', 'Factura', 'Km (km)'], 1);
 foreach ($gastos as $g) {
     $xlsx->addRow([
         $g['fecha'],
@@ -245,43 +272,43 @@ foreach ($gastos as $g) {
         trim($g['marca'] . ' ' . $g['modelo']),
         $g['categoria'],
         $g['concepto'],
-        (float)$g['monto'],
+        $money($g['monto']),
         $g['proveedor'],
         $g['factura'],
-        (int)$g['km'],
+        (int)$g['km'] > 0 ? $f_km($g['km']) : '',
     ]);
 }
 $xlsx->addBlankRow();
-$xlsx->addRow(['', '', '', '', '', 'TOTAL', array_sum(array_column($gastos, 'monto'))]);
+$xlsx->addRow(['', '', '', '', '', 'TOTAL', $money(array_sum(array_column($gastos, 'monto')))]);
 
 // ── Hoja 4: Combustible ──────────────────────────────────────────────────────
 $xlsx->addSheet('Combustible');
 $xlsx->addHeaderRow(['REGISTRO DE COMBUSTIBLE'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Litros', 'Precio/L', 'Total', 'Tipo', 'Estación', 'Km odómetro', 'Km recorridos', 'Rend. km/L', 'Conductor'], 1);
+$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Litros (L)', 'Precio/L ($/L)', 'Total ($)', 'Tipo', 'Estación', 'Km odómetro (km)', 'Km recorridos (km)', 'Rend. (km/L)', 'Conductor'], 1);
 foreach ($combustible as $c) {
     $xlsx->addRow([
         (string)$c['fecha'],
         $c['placas'],
         $c['alias'],
-        (float)$c['litros'],
-        (float)$c['precio_litro'],
-        (float)$c['total'],
+        $f_lts($c['litros']),
+        $f_pl($c['precio_litro']),
+        $money($c['total']),
         $c['tipo_combustible'],
         $c['estacion'],
-        (int)$c['km_odometro'],
-        (int)$c['km_recorridos'],
-        $c['kml'] > 0 ? (float)$c['kml'] : '',
+        (int)$c['km_odometro'] > 0 ? $f_km($c['km_odometro']) : '',
+        (int)$c['km_recorridos'] > 0 ? $f_km($c['km_recorridos']) : '',
+        $c['kml'] > 0 ? $f_kml($c['kml']) : '',
         $c['conductor'],
     ]);
 }
 if (!empty($combustible)) {
     $xlsx->addBlankRow();
     $xlsx->addRow(['', '', 'TOTALES',
-        round(array_sum(array_column($combustible, 'litros')), 3),
+        $f_lts(array_sum(array_column($combustible, 'litros'))),
         '',
-        round(array_sum(array_column($combustible, 'total')), 2),
+        $money(array_sum(array_column($combustible, 'total'))),
     ]);
 }
 
@@ -290,7 +317,7 @@ $xlsx->addSheet('Mantenimiento');
 $xlsx->addHeaderRow(['HISTORIAL DE MANTENIMIENTO'], 5);
 $xlsx->addRow([$periodo_label]);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Servicio', 'Taller', 'Técnico', 'Costo', 'Km odómetro', 'No. orden', 'Próxima fecha', 'Próximo km'], 1);
+$xlsx->addHeaderRow(['Fecha', 'Placas', 'Alias', 'Servicio', 'Taller', 'Técnico', 'Costo ($)', 'Km odómetro (km)', 'No. orden', 'Próxima fecha', 'Próximo km (km)'], 1);
 foreach ($mantenimientos as $m) {
     $xlsx->addRow([
         (string)$m['fecha'],
@@ -299,17 +326,17 @@ foreach ($mantenimientos as $m) {
         $m['servicio'],
         $m['taller'],
         $m['tecnico'],
-        $m['costo'] > 0 ? (float)$m['costo'] : '',
-        (int)$m['km_odometro'],
+        $m['costo'] > 0 ? $money($m['costo']) : '',
+        (int)$m['km_odometro'] > 0 ? $f_km($m['km_odometro']) : '',
         $m['orden'],
         $m['proxima_fecha'] ?: '',
-        $m['proximo_km'] > 0 ? (int)$m['proximo_km'] : '',
+        $m['proximo_km'] > 0 ? $f_km($m['proximo_km']) : '',
     ]);
 }
 if (!empty($mantenimientos)) {
     $xlsx->addBlankRow();
     $xlsx->addRow(['', '', '', '', '', 'TOTAL',
-        round(array_sum(array_column($mantenimientos, 'costo')), 2),
+        $money(array_sum(array_column($mantenimientos, 'costo'))),
     ]);
 }
 
@@ -318,15 +345,87 @@ $xlsx->addSheet('Documentos');
 $xlsx->addHeaderRow(['DOCUMENTOS VEHICULARES Y DE CONDUCTORES'], 5);
 $xlsx->addRow(['Generado: ' . date('d/m/Y H:i')]);
 $xlsx->addBlankRow();
-$xlsx->addHeaderRow(['Tipo', 'Placas', 'Alias', 'Conductor', 'No. documento', 'Proveedor', 'Inicio', 'Vencimiento', 'Estado', 'Monto'], 1);
+$xlsx->addHeaderRow(['Tipo', 'Placas', 'Alias', 'Conductor', 'No. documento', 'Proveedor', 'Inicio', 'Vencimiento', 'Estado', 'Monto ($)'], 1);
 foreach ($documentos as $d) {
     $xlsx->addRow([
         $d['tipo'], $d['placas'], $d['alias'], $d['conductor'],
         $d['numero'], $d['proveedor'],
         $d['inicio'] ?: '', $d['vence'] ?: '',
         $d['estado'],
-        $d['monto'] > 0 ? (float)$d['monto'] : '',
+        $d['monto'] > 0 ? $money($d['monto']) : '',
     ]);
+}
+
+// ── Hoja: Viajes ─────────────────────────────────────────────────────────────
+if (db_one("SHOW TABLES LIKE 'flotilla_viajes'")) {
+    $xlsx->addSheet('Viajes');
+    $xlsx->setPageSetup(1, 1);
+    $xlsx->addHeaderRow(['VIAJES DE LA FLOTA'], 5);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addBlankRow();
+    $km_sql = "SUM(CASE WHEN t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida THEN t.km_llegada - t.km_salida ELSE 0 END)";
+    $xlsx->addHeaderRow(['KM RECORRIDOS POR UNIDAD'], 5);
+    $xlsx->addHeaderRow(['Unidad', 'Placas', 'Viajes', 'Km (km)'], 1);
+    foreach (db_all(
+        "SELECT v.alias, v.placas, v.marca, v.modelo, COUNT(*) num_viajes, $km_sql km
+           FROM flotilla_viajes t INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+          WHERE t.estado='completado' AND DATE(t.fecha_salida) BETWEEN :d AND :h $suf
+          GROUP BY v.id HAVING km > 0 ORDER BY km DESC",
+        ['d' => $desde, 'h' => $hasta]) as $r) {
+        $xlsx->addRow([trim(($r['alias'] ? $r['alias'] . ' · ' : '') . $r['marca'] . ' ' . $r['modelo']), $r['placas'], (int) $r['num_viajes'], $f_km($r['km'])]);
+    }
+    if (flotilla_viajes_col('nombre') && (bool) db_one("SHOW TABLES LIKE 'flotilla_viaje_clientes'")) {
+        $rep = "COALESCE(c.nombre_completo, NULLIF(t.repartidor_nombre, ''), 'Sin repartidor')";
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['VIAJES POR REPARTIDOR'], 5);
+        $xlsx->addHeaderRow(['Repartidor', 'Viajes', 'Entregas', 'Km (km)'], 1);
+        foreach (db_all(
+            "SELECT $rep repartidor, COUNT(*) num_viajes, $km_sql km,
+                    COALESCE(SUM((SELECT COUNT(*) FROM flotilla_viaje_clientes cl WHERE cl.viaje_id = t.id)),0) entregas
+               FROM flotilla_viajes t INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+               LEFT JOIN flotilla_conductores c ON t.conductor_id = c.id
+              WHERE t.estado='completado' AND DATE(t.fecha_salida) BETWEEN :d AND :h $suf
+              GROUP BY repartidor ORDER BY num_viajes DESC",
+            ['d' => $desde, 'h' => $hasta]) as $r) {
+            $xlsx->addRow([$r['repartidor'], (int) $r['num_viajes'], (int) $r['entregas'], $f_km($r['km'])]);
+        }
+        $xlsx->addBlankRow();
+        $xlsx->addHeaderRow(['CLIENTES MÁS ATENDIDOS'], 5);
+        $xlsx->addHeaderRow(['Cliente', 'Entregas'], 1);
+        foreach (db_all(
+            "SELECT cl.cliente, COUNT(*) entregas FROM flotilla_viaje_clientes cl
+               INNER JOIN flotilla_viajes t ON cl.viaje_id = t.id
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+              WHERE t.estado='completado' AND DATE(t.fecha_salida) BETWEEN :d AND :h $suf
+              GROUP BY cl.cliente ORDER BY entregas DESC",
+            ['d' => $desde, 'h' => $hasta]) as $r) {
+            $xlsx->addRow([$r['cliente'], (int) $r['entregas']]);
+        }
+    }
+}
+
+// ── Hoja: Anomalías ──────────────────────────────────────────────────────────
+if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
+    $xlsx->addSheet('Anomalías');
+    $xlsx->setPageSetup(1, 1);
+    $xlsx->addHeaderRow(['ANOMALÍAS DETECTADAS (odómetro + combustible, sin GPS)'], 5);
+    $xlsx->addRow([$periodo_label]);
+    $xlsx->addBlankRow();
+    $xlsx->addHeaderRow(['Unidad', 'Placas', 'Anomalía', 'Detalle'], 1);
+    foreach (db_all(
+        "SELECT v.alias, v.placas, v.marca, v.modelo,
+            (SELECT (MAX(h.km) - MIN(h.km)) FROM flotilla_odometro_historial h
+              WHERE h.vehiculo_id = v.id AND DATE(h.leido_en) BETWEEN :d AND :h AND (h.origen IS NULL OR h.origen <> 'gps')) km,
+            (SELECT COALESCE(SUM(cc.litros),0) FROM flotilla_combustible cc
+              WHERE cc.vehiculo_id = v.id AND DATE(cc.fecha) BETWEEN :d2 AND :h2) litros
+         FROM flotilla_vehiculos v WHERE v.activo = 1 $suf ORDER BY v.alias",
+        ['d' => $desde, 'h' => $hasta, 'd2' => $desde, 'h2' => $hasta]) as $ra) {
+        $km = (float) ($ra['km'] ?? 0); $lt = (float) $ra['litros'];
+        $uni = trim(($ra['alias'] ? $ra['alias'] . ' · ' : '') . $ra['marca'] . ' ' . $ra['modelo']);
+        if ($km > 300 && $lt <= 0) $xlsx->addRow([$uni, $ra['placas'], 'Km sin combustible', 'Recorrió ' . number_format($km) . ' km sin cargas registradas.']);
+        if ($lt > 5 && $km <= 0)   $xlsx->addRow([$uni, $ra['placas'], 'Combustible sin km', 'Cargó ' . number_format($lt, 0) . ' L sin avance de odómetro.']);
+        if ($km > 0 && $lt > 0) { $rr = $km / $lt; if ($rr < 1.5 || $rr > 30) $xlsx->addRow([$uni, $ra['placas'], 'Rendimiento fuera de rango', number_format($rr, 1) . ' km/L (' . number_format($km) . ' km / ' . number_format($lt, 0) . ' L).']); }
+    }
 }
 
 // ── Descargar ────────────────────────────────────────────────────────────────

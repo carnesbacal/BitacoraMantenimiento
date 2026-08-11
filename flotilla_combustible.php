@@ -301,6 +301,7 @@ if (es_post() && $puede_gestionar) {
         if ($op === 'eliminar' && tiene_permiso('administrar')) {
             $del_id = (int) input('del_id', 0);
             $del_vid = (int) (db_one("SELECT vehiculo_id FROM flotilla_combustible WHERE id = :id", ['id' => $del_id])['vehiculo_id'] ?? 0);
+            db_exec("DELETE FROM flotilla_gastos WHERE combustible_id = :id", ['id' => $del_id]); // borrar el gasto ligado (evita gastos huérfanos)
             db_exec("DELETE FROM flotilla_combustible WHERE id = :id", ['id' => $del_id]);
             if ($del_vid) { flotilla_combustible_resync_odometro($del_vid); flotilla_combustible_resync_rendimiento($del_vid); }
             flash_set('exito', 'Registro eliminado.');

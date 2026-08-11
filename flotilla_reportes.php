@@ -35,6 +35,14 @@ $suc_filter_gastos = $f_suc ? "AND v.sucursal_id = {$f_suc}" : '';
 $label_periodo = fmt_fecha($desde) . ' – ' . fmt_fecha($hasta);
 $dias_periodo  = (int)(new DateTime($hasta))->diff(new DateTime($desde))->days + 1;
 
+// Botón de exportar por sección a Excel (respeta el período/sucursal actuales).
+$qs_sec = 'desde=' . rawurlencode($desde) . '&hasta=' . rawurlencode($hasta) . ($f_suc ? '&sucursal_id=' . $f_suc : '');
+$btn_export = function (string $sec) use ($qs_sec) {
+    return '<a href="' . url('flotilla_reporte_seccion_export.php?seccion=' . $sec . '&' . $qs_sec) . '" '
+        . 'class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100 no-print" '
+        . 'title="Exportar esta sección a Excel"><i data-lucide="sheet" class="w-3 h-3"></i> Excel</a>';
+};
+
 // ── Accesos rápidos de período ──────────────────────────────────────────────
 $periodos_rapidos = [
     'Este mes'     => [date('Y-m-01'), date('Y-m-d')],
@@ -185,6 +193,8 @@ $prov_flota = flotilla_gasto_proveedores($desde, $hasta, $suc_filter_gastos, 15)
 // 7b2. Viajes de la flota en el periodo (por unidad) y viajes recientes.
 $viajes_en_curso = 0; $viajes_resumen = ['n' => 0, 'km' => 0];
 $viajes_por_unidad = []; $viajes_recientes = [];
+$viajes_v2_ok = false; $viajes_por_repartidor = []; $entregas_por_cliente = []; $viajes_largos = [];
+$viajes_entregas = 0; $viajes_dur_prom = 0.0;
 if (db_one("SHOW TABLES LIKE 'flotilla_viajes'")) {
     $km_rec_sql = "SUM(CASE WHEN t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida THEN t.km_llegada - t.km_salida ELSE 0 END)";
     $viajes_en_curso = (int) (db_one(
@@ -207,22 +217,84 @@ if (db_one("SHOW TABLES LIKE 'flotilla_viajes'")) {
         ['desde' => $desde, 'hasta' => $hasta]
     );
     $km_rec_row = "(CASE WHEN t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida THEN t.km_llegada - t.km_salida ELSE NULL END)";
+    $sel_nombre = flotilla_viajes_col('nombre') ? "t.nombre" : "NULL AS nombre";
+    $sel_rep    = flotilla_viajes_col('repartidor_nombre') ? "t.repartidor_nombre" : "NULL AS repartidor_nombre";
     $viajes_recientes = db_all(
-        "SELECT t.id, t.fecha_salida, t.estado, t.proposito, t.destino_descripcion,
-                $km_rec_row AS km,
-                v.id vid, v.alias, v.placas, v.marca, v.modelo,
-                so.nombre suc_origen, sd.nombre suc_destino
+        "SELECT t.id, t.fecha_salida, t.estado, $km_rec_row AS km,
+                $sel_nombre, $sel_rep, c.nombre_completo AS conductor_nombre,
+                v.id vid, v.alias, v.placas, v.marca, v.modelo
            FROM flotilla_viajes t
            INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
-           LEFT  JOIN sucursales so ON t.sucursal_origen_id  = so.id
-           LEFT  JOIN sucursales sd ON t.sucursal_destino_id = sd.id
+           LEFT  JOIN flotilla_conductores c ON t.conductor_id = c.id
           WHERE (t.estado = 'en_ruta'
                  OR (t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta)) $suc_filter_gastos
           ORDER BY (t.estado = 'en_ruta') DESC, t.fecha_salida DESC, t.id DESC
           LIMIT 12",
         ['desde' => $desde, 'hasta' => $hasta]
     );
+
+    // v2: repartidor, entregas por cliente, viajes más largos y KPIs enriquecidos.
+    $viajes_v2_ok = flotilla_viajes_col('nombre') && (bool) db_one("SHOW TABLES LIKE 'flotilla_viaje_clientes'");
+    $viajes_por_repartidor = []; $entregas_por_cliente = []; $viajes_largos = [];
+    $viajes_entregas = 0; $viajes_dur_prom = 0.0;
+    if ($viajes_v2_ok) {
+        $rep_expr = "COALESCE(c.nombre_completo, NULLIF(t.repartidor_nombre, ''), 'Sin repartidor')";
+        $viajes_por_repartidor = db_all(
+            "SELECT $rep_expr AS repartidor, COUNT(*) num_viajes, $km_rec_sql km,
+                    COALESCE(SUM((SELECT COUNT(*) FROM flotilla_viaje_clientes cl WHERE cl.viaje_id = t.id)), 0) entregas
+               FROM flotilla_viajes t
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+               LEFT  JOIN flotilla_conductores c ON t.conductor_id = c.id
+              WHERE t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos
+              GROUP BY repartidor ORDER BY num_viajes DESC, km DESC LIMIT 15",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
+        $entregas_por_cliente = db_all(
+            "SELECT cl.cliente, COUNT(*) entregas
+               FROM flotilla_viaje_clientes cl
+               INNER JOIN flotilla_viajes t   ON cl.viaje_id = t.id
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+              WHERE t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos
+              GROUP BY cl.cliente ORDER BY entregas DESC, cl.cliente ASC LIMIT 15",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
+        $viajes_largos = db_all(
+            "SELECT t.id, t.nombre, t.fecha_salida, $km_rec_row AS km, v.id vid,
+                    v.alias, v.placas, v.marca, v.modelo,
+                    COALESCE(c.nombre_completo, NULLIF(t.repartidor_nombre, '')) AS repartidor
+               FROM flotilla_viajes t
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+               LEFT  JOIN flotilla_conductores c ON t.conductor_id = c.id
+              WHERE t.estado = 'completado' AND t.km_llegada IS NOT NULL AND t.km_llegada >= t.km_salida
+                AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos
+              ORDER BY (t.km_llegada - t.km_salida) DESC, t.fecha_salida DESC LIMIT 10",
+            ['desde' => $desde, 'hasta' => $hasta]
+        );
+        $viajes_entregas = (int) (db_one(
+            "SELECT COUNT(*) n FROM flotilla_viaje_clientes cl
+               INNER JOIN flotilla_viajes t   ON cl.viaje_id = t.id
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+              WHERE t.estado = 'completado' AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos",
+            ['desde' => $desde, 'hasta' => $hasta]
+        )['n'] ?? 0);
+        $viajes_dur_prom = (float) (db_one(
+            "SELECT AVG(TIMESTAMPDIFF(MINUTE, t.fecha_salida, t.fecha_llegada)) m
+               FROM flotilla_viajes t
+               INNER JOIN flotilla_vehiculos v ON t.vehiculo_id = v.id
+              WHERE t.estado = 'completado' AND t.fecha_llegada IS NOT NULL AND t.fecha_llegada > t.fecha_salida
+                AND DATE(t.fecha_salida) BETWEEN :desde AND :hasta $suc_filter_gastos",
+            ['desde' => $desde, 'hasta' => $hasta]
+        )['m'] ?? 0);
+    }
 }
+
+// Formatea minutos a "Xh Ym".
+$fmt_dur = function (float $min): string {
+    $min = (int) round($min);
+    if ($min <= 0) return '—';
+    $h = intdiv($min, 60); $m = $min % 60;
+    return $h > 0 ? ($h . 'h ' . $m . 'm') : ($m . 'm');
+};
 
 // 7c. Uso de la flota: km recorridos por vehículo (ODÓMETRO manual) + costo integral por km.
 $km_por_veh = [];
@@ -383,6 +455,10 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         </form>
     </div>
 
+    <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-zinc-500 uppercase tracking-wide">Resumen del período</span>
+        <?= $btn_export('resumen') ?>
+    </div>
     <!-- KPIs principales -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <?php
@@ -498,6 +574,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
             <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
                 <i data-lucide="trending-up" class="w-4 h-4 text-bacal-700"></i>
                 Gasto por mes
+                <?= $btn_export('gasto_mes') ?>
             </h3>
             <?php if (empty($tendencia)): ?>
             <p class="text-sm text-zinc-400 text-center py-10">Sin gastos en el período</p>
@@ -543,6 +620,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
             <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
                 <i data-lucide="pie-chart" class="w-4 h-4 text-bacal-700"></i>
                 Gasto por categoría
+                <?= $btn_export('gasto_categoria') ?>
             </h3>
             <?php if (empty($por_categoria)): ?>
             <p class="text-sm text-zinc-400 text-center py-10">Sin gastos en el período</p>
@@ -574,9 +652,10 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
     <!-- Gasto por vehículo -->
     <?php if (!empty($por_vehiculo)): ?>
     <div class="bg-white rounded-xl border border-zinc-200 p-5">
-        <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2">
+        <h3 class="font-semibold text-sm text-zinc-800 mb-4 flex items-center gap-2 flex-wrap">
             <i data-lucide="car" class="w-4 h-4 text-bacal-700"></i>
             Gasto por vehículo
+            <?= $btn_export('gasto_vehiculo') ?>
         </h3>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -627,6 +706,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2 flex-wrap">
             <i data-lucide="gauge" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Rendimiento y kilometraje por unidad</h3>
+            <?= $btn_export('rendimiento') ?>
             <span class="text-xs text-zinc-500">(<?= count($rendimiento) ?>)</span>
             <span class="ml-auto text-[11px] text-zinc-400">Km del odómetro · solo capturas manuales (sin GPS) · <?= e($label_periodo) ?></span>
         </div>
@@ -639,8 +719,8 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                     <tr>
                         <th class="px-4 py-2.5 text-left  text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Unidad</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Cargas</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Litros</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Km recorridos</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Litros (L)</th>
+                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Km recorridos (km)</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider" data-orden-tipo="num">Km/L</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider hidden md:table-cell" data-orden-tipo="num">$/L prom</th>
                         <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider hidden md:table-cell" data-orden-tipo="num">Costo comb.</th>
@@ -734,11 +814,14 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2 flex-wrap">
             <i data-lucide="map-pin" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Viajes de la flota</h3>
+            <?= $btn_export('viajes') ?>
             <?php if ($viajes_en_curso > 0): ?>
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800"><?= (int) $viajes_en_curso ?> en ruta</span>
             <?php endif; ?>
             <span class="ml-auto text-[11px] text-zinc-400">
-                <?= (int) ($viajes_resumen['n'] ?? 0) ?> viajes · <?= number_format((float) ($viajes_resumen['km'] ?? 0)) ?> km · <?= e($label_periodo) ?>
+                <?= (int) ($viajes_resumen['n'] ?? 0) ?> viajes · <?= number_format((float) ($viajes_resumen['km'] ?? 0)) ?> km<?php
+                    $n_vj = (int) ($viajes_resumen['n'] ?? 0);
+                    if ($viajes_v2_ok): ?> · <?= (int) $viajes_entregas ?> entregas · <?= $fmt_dur($viajes_dur_prom) ?> prom · <?= $n_vj > 0 ? number_format((float) $viajes_resumen['km'] / $n_vj) : 0 ?> km/viaje<?php endif; ?> · <?= e($label_periodo) ?>
             </span>
             <a href="<?= url('flotilla_viajes.php') ?>" class="text-[11px] font-semibold text-bacal-700 hover:underline flex items-center gap-1">
                 Ver todos <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
@@ -779,9 +862,8 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                 <?php else: ?>
                 <div class="space-y-2">
                     <?php foreach ($viajes_recientes as $vr):
-                        $ruta = trim((string) ($vr['suc_origen'] ?? '')) ?: '—';
-                        $dest = trim((string) ($vr['suc_destino'] ?? '')) ?: trim((string) ($vr['destino_descripcion'] ?? ''));
                         $en_ruta = ($vr['estado'] === 'en_ruta');
+                        $rep = flotilla_viaje_repartidor($vr);
                     ?>
                     <a href="<?= url('flotilla_vehiculo_ver.php?id=' . $vr['vid'] . '&tab=viajes') ?>"
                        class="block rounded-lg border border-zinc-100 hover:border-bacal-200 hover:bg-bacal-50/40 px-3 py-2 transition-colors">
@@ -798,7 +880,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                         </div>
                         <div class="flex items-center justify-between gap-2 mt-0.5">
                             <span class="text-[11px] text-zinc-500 truncate">
-                                <?= e($ruta) ?><?= $dest ? ' → ' . e($dest) : '' ?>
+                                <?= !empty($vr['nombre']) ? e($vr['nombre']) : 'Viaje' ?><?= $rep ? ' · ' . e($rep) : '' ?>
                             </span>
                             <span class="shrink-0 text-[10px] text-zinc-400"><?= e(date('d/m/y', strtotime((string) $vr['fecha_salida']))) ?></span>
                         </div>
@@ -808,6 +890,89 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
                 <?php endif; ?>
             </div>
         </div>
+
+        <?php if ($viajes_v2_ok && (!empty($viajes_por_repartidor) || !empty($entregas_por_cliente))): ?>
+        <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-100 border-t border-zinc-100">
+            <!-- Viajes por repartidor -->
+            <div class="p-5">
+                <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Viajes por repartidor</h4>
+                <?php if (empty($viajes_por_repartidor)): ?>
+                <p class="text-xs text-zinc-400">Sin datos.</p>
+                <?php else: ?>
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] text-zinc-400 uppercase">
+                        <th class="text-left font-bold pb-2">Repartidor</th>
+                        <th class="text-right font-bold pb-2">Viajes</th>
+                        <th class="text-right font-bold pb-2">Entregas</th>
+                        <th class="text-right font-bold pb-2">Km (km)</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-zinc-50">
+                    <?php foreach ($viajes_por_repartidor as $r): ?>
+                        <tr>
+                            <td class="py-1.5 pr-2 font-medium text-zinc-800"><span class="block truncate max-w-[170px]"><?= e($r['repartidor']) ?></span></td>
+                            <td class="py-1.5 text-right text-zinc-700"><?= (int) $r['num_viajes'] ?></td>
+                            <td class="py-1.5 text-right text-zinc-700"><?= (int) $r['entregas'] ?></td>
+                            <td class="py-1.5 text-right font-semibold text-zinc-800"><?= number_format((float) $r['km']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+            </div>
+            <!-- Clientes más atendidos -->
+            <div class="p-5">
+                <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Clientes más atendidos</h4>
+                <?php if (empty($entregas_por_cliente)): ?>
+                <p class="text-xs text-zinc-400">Sin entregas registradas en el periodo.</p>
+                <?php else: $cmax = max(array_map(fn($x) => (int) $x['entregas'], $entregas_por_cliente) ?: [1]); ?>
+                <div class="space-y-2">
+                    <?php foreach ($entregas_por_cliente as $ec): $pct = $cmax > 0 ? ((int) $ec['entregas'] / $cmax) * 100 : 0; ?>
+                    <div>
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="font-medium text-zinc-700 truncate max-w-[190px]"><?= e($ec['cliente']) ?></span>
+                            <span class="font-bold text-zinc-800 ml-2 shrink-0"><?= (int) $ec['entregas'] ?> entrega(s)</span>
+                        </div>
+                        <div class="w-full bg-zinc-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-emerald-500" style="width:<?= round($pct) ?>%"></div></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($viajes_largos)): ?>
+        <div class="p-5 border-t border-zinc-100">
+            <h4 class="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3">Viajes más largos</h4>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] text-zinc-400 uppercase border-b border-zinc-100">
+                        <th class="text-left font-bold py-2">Viaje</th>
+                        <th class="text-left font-bold py-2">Unidad</th>
+                        <th class="text-left font-bold py-2 hidden sm:table-cell">Repartidor</th>
+                        <th class="text-left font-bold py-2">Fecha</th>
+                        <th class="text-right font-bold py-2">Km</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-zinc-50">
+                    <?php foreach ($viajes_largos as $vl): ?>
+                        <tr>
+                            <td class="py-1.5 pr-2 font-medium text-zinc-800"><?= !empty($vl['nombre']) ? e($vl['nombre']) : 'Viaje' ?></td>
+                            <td class="py-1.5 pr-2 text-xs text-zinc-600">
+                                <a href="<?= url('flotilla_vehiculo_ver.php?id=' . $vl['vid'] . '&tab=viajes') ?>" class="hover:underline">
+                                    <?= e($vl['alias'] ?: "{$vl['marca']} {$vl['modelo']}") ?> <span class="font-mono text-zinc-400"><?= e($vl['placas']) ?></span>
+                                </a>
+                            </td>
+                            <td class="py-1.5 pr-2 text-xs text-zinc-600 hidden sm:table-cell"><?= e((string) ($vl['repartidor'] ?? '')) ?: '—' ?></td>
+                            <td class="py-1.5 pr-2 text-xs text-zinc-500"><?= e(date('d/m/y', strtotime((string) $vl['fecha_salida']))) ?></td>
+                            <td class="py-1.5 text-right font-semibold text-zinc-800"><?= $vl['km'] !== null ? number_format((float) $vl['km']) : '—' ?> km</td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <?php endif; ?>
     </div>
 
@@ -817,6 +982,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Proveedores de flotilla más caros</h3>
+            <?= $btn_export('proveedores') ?>
             <span class="text-xs text-zinc-500">(<?= count($prov_flota) ?>)</span>
             <span class="ml-auto text-[11px] text-zinc-400">Mantenimiento de vehículos en el período</span>
         </div>
@@ -858,6 +1024,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="route" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Uso de la flota · km recorridos</h3>
+            <?= $btn_export('uso_flota') ?>
             <span class="ml-auto text-[11px] text-zinc-400">Km del odómetro (capturas) · el costo/km incluye todo el gasto (combustible + mantenimiento + …)</span>
         </div>
         <div class="overflow-x-auto">
@@ -913,6 +1080,7 @@ $total_cat    = array_sum(array_column($por_categoria, 'total'));
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Anomalías detectadas</h3>
+            <?= $btn_export('anomalias') ?>
             <span class="ml-auto text-[11px] text-zinc-400">Odómetro y combustible · <?= count($anomalias) ?></span>
         </div>
         <div class="divide-y divide-zinc-100">

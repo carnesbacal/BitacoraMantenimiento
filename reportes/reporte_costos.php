@@ -92,6 +92,14 @@ $delta_html = function (float $cur, float $prev, bool $neutral = false): string 
         . number_format(abs($d), 1) . '% vs anterior</span>';
 };
 
+// Botón para exportar SOLO una sección a Excel, con los filtros actuales.
+$qs_costos = http_build_query(array_diff_key($_GET, ['exportar' => 1, 'seccion' => 1]));
+$btn_export_sec = function (string $sec, bool $push = true) use ($qs_costos) {
+    return '<a href="' . url('reportes/reporte_costos_seccion_export.php?seccion=' . $sec . ($qs_costos ? '&' . $qs_costos : '')) . '" '
+        . 'class="' . ($push ? 'ml-auto ' : '') . 'no-print inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100" '
+        . 'title="Exportar esta sección a Excel"><i data-lucide="sheet" class="w-3 h-3"></i> Excel</a>';
+};
+
 // ----------------------------------------------------------------------------
 // Exportación CSV
 // ----------------------------------------------------------------------------
@@ -211,6 +219,9 @@ if ($es_xlsx) {
 
     $xlsx = new XlsxWriter();
     $periodo_label = 'Período: ' . $periodo['etiqueta'];
+    // Celdas numéricas sumables: moneda con formato $ y porcentaje real.
+    $mny  = fn($v) => ['v' => round((float) $v, 2), 's' => 3];
+    $pctc = fn($v) => ['v' => round((float) $v, 1), 's' => 8];
 
     // Hoja 1: Resumen + comparativa
     $xlsx->addSheet('Resumen');
@@ -220,32 +231,33 @@ if ($es_xlsx) {
     $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
     $xlsx->addBlankRow();
     $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
-    $xlsx->addRow(['Costo de incidencias (interno + proveedores)', round((float) $resumen['total'], 2)]);
-    $xlsx->addRow(['Costo externo (proveedores)', round((float) $resumen['externo'], 2)]);
-    $xlsx->addRow(['  Mano de obra', round((float) $resumen['mano_obra'], 2)]);
-    $xlsx->addRow(['  Materiales proveedor', round((float) $resumen['materiales'], 2)]);
-    $xlsx->addRow(['Costo interno (refacciones)', round((float) $resumen['interno'], 2)]);
+    $xlsx->addRow(['Costo de incidencias (interno + proveedores)', $mny($resumen['total'])]);
+    $xlsx->addRow(['Costo externo (proveedores)', $mny($resumen['externo'])]);
+    $xlsx->addRow(['  Mano de obra', $mny($resumen['mano_obra'])]);
+    $xlsx->addRow(['  Materiales proveedor', $mny($resumen['materiales'])]);
+    $xlsx->addRow(['Costo interno (refacciones)', $mny($resumen['interno'])]);
     $xlsx->addRow(['Incidencias en el período', (int) $resumen['num_total']]);
     $xlsx->addRow(['  Con costo', (int) $resumen['con_costo']]);
     $xlsx->addRow(['  Con proveedor', (int) $resumen['con_proveedor']]);
-    $xlsx->addRow(['Costo promedio por incidencia con costo', round((float) $resumen['promedio'], 2)]);
-    $xlsx->addRow(['Adquisiciones · compras de refacciones (incl. requisiciones)', round((float) $adq_refacc['total'], 2)]);
-    $xlsx->addRow(['Adquisiciones · equipos comprados', round((float) $adq_equipos['total'], 2)]);
-    $xlsx->addRow(['TOTAL DEL MES (incidencias + adquisiciones)', round((float) $gran_total, 2)]);
-    $xlsx->addRow(['Gasto flotilla (por separado, NO incluido en el total)', round((float) $flota_total, 2)]);
+    $xlsx->addRow(['Costo promedio por incidencia con costo', $mny($resumen['promedio'])]);
+    $xlsx->addRow(['Adquisiciones · compras de refacciones (incl. requisiciones)', $mny($adq_refacc['total'])]);
+    $xlsx->addRow(['Adquisiciones · equipos comprados', $mny($adq_equipos['total'])]);
+    $xlsx->addRow(['TOTAL DEL MES (incidencias + adquisiciones)', $mny($gran_total)]);
+    $xlsx->addRow(['Gasto flotilla (por separado, NO incluido en el total)', $mny($flota_total)]);
     $xlsx->addBlankRow();
     $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $prev_desde . ' a ' . $prev_hasta . ')'], true);
     $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
-    $cmp = function ($cur, $prev) {
+    $cmp = function ($cur, $prev, bool $money = true) use ($mny, $pctc) {
         $cur = (float) $cur; $prev = (float) $prev;
-        $var = $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) . '%' : 'n/d';
-        return [round($cur, 2), round($prev, 2), $var];
+        $var = $prev > 0 ? $pctc(($cur - $prev) / $prev * 100) : 'n/d';
+        $fmt = $money ? $mny : fn($x) => (int) $x;
+        return [$fmt($cur), $fmt($prev), $var];
     };
     $xlsx->addRow(array_merge(['Costo de incidencias'],  $cmp($resumen['total'],     $resumen_prev['total'])));
     $xlsx->addRow(array_merge(['TOTAL del mes (todo)'],  $cmp($gran_total,           $gran_total_prev)));
     $xlsx->addRow(array_merge(['Externo (proveedores)'], $cmp($resumen['externo'],   $resumen_prev['externo'])));
     $xlsx->addRow(array_merge(['Interno (refacciones)'], $cmp($resumen['interno'],   $resumen_prev['interno'])));
-    $xlsx->addRow(array_merge(['Incidencias'],           $cmp($resumen['num_total'], $resumen_prev['num_total'])));
+    $xlsx->addRow(array_merge(['Incidencias'],           $cmp($resumen['num_total'], $resumen_prev['num_total'], false)));
 
     // Hoja 2: Incidencias con costo (todas)
     $xlsx->addSheet('Incidencias');
@@ -258,22 +270,22 @@ if ($es_xlsx) {
             date('Y-m-d', strtotime($r['fecha_evento'])),
             $r['folio'], $r['titulo'], $r['sucursal_nombre'],
             $r['proveedor_nombre'] ?: ($r['proveedor_externo_info'] ?: 'Interno'),
-            round((float) $r['mano_obra'], 2),
-            round((float) $r['materiales'], 2),
-            round((float) $r['refacciones'], 2),
-            round((float) $r['materiales_comprados'], 2),
-            round((float) $r['mano_obra_interna'], 2),
-            round((float) $r['total'], 2),
+            $mny($r['mano_obra']),
+            $mny($r['materiales']),
+            $mny($r['refacciones']),
+            $mny($r['materiales_comprados']),
+            $mny($r['mano_obra_interna']),
+            $mny($r['total']),
         ]);
     }
     $xlsx->addBlankRow();
     $xlsx->addRow(['', '', '', '', 'TOTAL',
-        round(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $inc_full)), 2),
-        round(array_sum(array_map(fn($x) => (float) $x['materiales'], $inc_full)), 2),
-        round(array_sum(array_map(fn($x) => (float) $x['refacciones'], $inc_full)), 2),
-        round(array_sum(array_map(fn($x) => (float) $x['materiales_comprados'], $inc_full)), 2),
-        round(array_sum(array_map(fn($x) => (float) $x['mano_obra_interna'], $inc_full)), 2),
-        round(array_sum(array_map(fn($x) => (float) $x['total'], $inc_full)), 2),
+        $mny(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $inc_full))),
+        $mny(array_sum(array_map(fn($x) => (float) $x['materiales'], $inc_full))),
+        $mny(array_sum(array_map(fn($x) => (float) $x['refacciones'], $inc_full))),
+        $mny(array_sum(array_map(fn($x) => (float) $x['materiales_comprados'], $inc_full))),
+        $mny(array_sum(array_map(fn($x) => (float) $x['mano_obra_interna'], $inc_full))),
+        $mny(array_sum(array_map(fn($x) => (float) $x['total'], $inc_full))),
     ]);
 
     // Hoja 3: Proveedores
@@ -285,7 +297,7 @@ if ($es_xlsx) {
     foreach ($prov_full as $p) {
         $xlsx->addRow([
             $p['nombre'], $p['servicio'] ?? '', (int) $p['num_incidencias'],
-            round((float) $p['mano_obra'], 2), round((float) $p['materiales'], 2), round((float) $p['total'], 2),
+            $mny($p['mano_obra']), $mny($p['materiales']), $mny($p['total']),
         ]);
     }
 
@@ -300,12 +312,12 @@ if ($es_xlsx) {
             $reg = (int) $pf['registros'];
             $xlsx->addRow([
                 $pf['proveedor'], $reg, (int) $pf['vehiculos'],
-                round($reg > 0 ? (float) $pf['total'] / $reg : 0, 2),
-                round((float) $pf['total'], 2),
+                $mny($reg > 0 ? (float) $pf['total'] / $reg : 0),
+                $mny($pf['total']),
             ]);
         }
         $xlsx->addBlankRow();
-        $xlsx->addRow(['', '', '', 'TOTAL', round((float) $flota_total, 2)]);
+        $xlsx->addRow(['', '', '', 'TOTAL', $mny($flota_total)]);
     }
 
     // Hoja 5: Por sucursal
@@ -318,7 +330,7 @@ if ($es_xlsx) {
         foreach ($por_sucursal as $sx) {
             $xlsx->addRow([
                 $sx['nombre'], (int) $sx['num_incidencias'],
-                round((float) $sx['externo'], 2), round((float) $sx['interno'], 2), round((float) $sx['total'], 2),
+                $mny($sx['externo']), $mny($sx['interno']), $mny($sx['total']),
             ]);
         }
     }
@@ -332,7 +344,7 @@ if ($es_xlsx) {
         $xlsx->addHeaderRow(['Período', 'Externo', 'Interno', 'Total'], true);
         foreach ($tendencia as $t) {
             $ext = (float) $t['externo']; $int = (float) $t['interno'];
-            $xlsx->addRow([$t['label'], round($ext, 2), round($int, 2), round($ext + $int, 2)]);
+            $xlsx->addRow([$t['label'], $mny($ext), $mny($int), $mny($ext + $int)]);
         }
     }
 
@@ -347,20 +359,20 @@ if ($es_xlsx) {
         foreach ($adq_refacc['detalle'] as $ar) {
             $xlsx->addRow([
                 $ar['nombre'], $ar['codigo'],
-                round((float) $ar['piezas'], 2), (int) $ar['movimientos'], round((float) $ar['total'], 2),
+                ['v' => round((float) $ar['piezas'], 2), 's' => 7], (int) $ar['movimientos'], $mny($ar['total']),
             ]);
         }
-        $xlsx->addRow(['Subtotal refacciones', '', '', '', round((float) $adq_refacc['total'], 2)]);
+        $xlsx->addRow(['Subtotal refacciones', '', '', '', $mny($adq_refacc['total'])]);
         $xlsx->addBlankRow();
         $xlsx->addHeaderRow(['Equipos adquiridos', 'Código', 'Fecha compra', '', 'Costo'], true);
         foreach ($adq_equipos['detalle'] as $ae) {
             $xlsx->addRow([
-                $ae['nombre'], $ae['codigo_inventario'], (string) $ae['fecha_compra'], '', round((float) $ae['costo_compra'], 2),
+                $ae['nombre'], $ae['codigo_inventario'], (string) $ae['fecha_compra'], '', $mny($ae['costo_compra']),
             ]);
         }
-        $xlsx->addRow(['Subtotal equipos', '', '', '', round((float) $adq_equipos['total'], 2)]);
+        $xlsx->addRow(['Subtotal equipos', '', '', '', $mny($adq_equipos['total'])]);
         $xlsx->addBlankRow();
-        $xlsx->addRow(['TOTAL ADQUISICIONES', '', '', '', round((float) $adq_total, 2)]);
+        $xlsx->addRow(['TOTAL ADQUISICIONES', '', '', '', $mny($adq_total)]);
     }
 
     $xlsx->download('reporte_costos_' . date('Ymd_His') . '.xlsx');
@@ -537,6 +549,7 @@ require_once __DIR__ . '/../config/header.php';
             <i data-lucide="layers" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Desglose del costo total del mes</h3>
             <span class="ml-auto text-[11px] text-zinc-400"><?= e($periodo['etiqueta']) ?> · <?= e($suc_label) ?></span>
+            <?= $btn_export_sec('resumen', false) ?>
         </div>
         <?php
         $desglose = [
@@ -567,7 +580,10 @@ require_once __DIR__ . '/../config/header.php';
     <!-- Tendencia + Desglose -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div class="lg:col-span-2 bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
-            <h3 class="font-display text-base font-bold text-zinc-900 mb-3">Tendencia de costos</h3>
+            <div class="flex items-center gap-2 mb-3">
+                <h3 class="font-display text-base font-bold text-zinc-900">Tendencia de costos</h3>
+                <?= $btn_export_sec('tendencia') ?>
+            </div>
             <?php if (array_sum($tend_externo) + array_sum($tend_interno) > 0): ?>
             <div class="h-64"><canvas id="chartTendencia"></canvas></div>
             <?php else: ?>
@@ -600,6 +616,7 @@ require_once __DIR__ . '/../config/header.php';
             <i data-lucide="trending-up" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Incidencias más caras</h3>
             <span class="text-xs text-zinc-500">(<?= count($ranking_inc) ?>)</span>
+            <?= $btn_export_sec('incidencias') ?>
         </div>
         <?php if (empty($ranking_inc)): ?>
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin incidencias con costo en el período.</div>
@@ -664,6 +681,7 @@ require_once __DIR__ . '/../config/header.php';
             <i data-lucide="truck" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Proveedores más caros</h3>
             <span class="text-xs text-zinc-500">(<?= count($ranking_prov) ?>)</span>
+            <?= $btn_export_sec('proveedores') ?>
         </div>
         <?php if (empty($ranking_prov)): ?>
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin gastos a proveedores registrados en el período.</div>
@@ -716,6 +734,7 @@ require_once __DIR__ . '/../config/header.php';
             <h3 class="font-display text-base font-bold text-zinc-900">Proveedores de flotilla más caros</h3>
             <span class="text-xs text-zinc-500">(<?= count($prov_flota) ?>)</span>
             <span class="ml-auto text-[11px] text-zinc-400">Mantenimiento de vehículos · gasto independiente de incidencias</span>
+            <?= $btn_export_sec('flotilla', false) ?>
         </div>
         <?php if (empty($prov_flota)): ?>
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin gastos de mantenimiento de flotilla en el período.</div>
@@ -764,6 +783,7 @@ require_once __DIR__ . '/../config/header.php';
             <i data-lucide="shopping-cart" class="w-5 h-5 text-emerald-600"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Adquisiciones del mes</h3>
             <span class="ml-auto text-[11px] text-zinc-400">Compras de refacciones (incl. requisiciones) + equipos · <?= e(fmt_dinero($adq_total)) ?></span>
+            <?= $btn_export_sec('adquisiciones', false) ?>
         </div>
         <?php if ($adq_refacc['total'] <= 0 && $adq_equipos['total'] <= 0): ?>
         <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin compras de refacciones ni equipos en el período.</div>
@@ -835,6 +855,7 @@ require_once __DIR__ . '/../config/header.php';
         <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
             <i data-lucide="map-pin" class="w-5 h-5 text-bacal-700"></i>
             <h3 class="font-display text-base font-bold text-zinc-900">Costos por sucursal</h3>
+            <?= $btn_export_sec('sucursales') ?>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">

@@ -30,6 +30,7 @@ if (!tiene_permiso('ver_reportes')) {
 // ¿Es una solicitud de exportación?
 $es_exportacion = (input('exportar') === 'csv');
 $es_xlsx        = (input('exportar') === 'xlsx');
+$seccion_xlsx   = (string) input('seccion', '');   // export de una sola sección
 
 // ----------------------------------------------------------------------------
 // Filtros de rango de fechas
@@ -317,6 +318,14 @@ $delta_html = function (float $cur, float $prev, bool $neutral = false): string 
         . number_format(abs($d), 1) . '%</span> <span class="text-zinc-400">vs anterior</span>';
 };
 
+// Botón para exportar SOLO una sección a Excel, con los filtros actuales.
+$qs_mant = http_build_query(['desde' => $f_desde, 'hasta' => $f_hasta, 'sucursal_id' => $f_sucursal]);
+$btn_export_sec = function (string $sec) use ($qs_mant) {
+    return '<a href="' . url('reportes_mantenimiento.php?' . $qs_mant . '&exportar=xlsx&seccion=' . $sec) . '" '
+        . 'class="ml-auto no-print inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100" '
+        . 'title="Exportar esta sección a Excel"><i data-lucide="sheet" class="w-3 h-3"></i> Excel</a>';
+};
+
 // Datos para gráficas
 $mes_labels  = array_map(fn($m) => date('M Y', strtotime($m['mes'] . '-01')), $costo_mensual);
 $mes_costo   = array_map(fn($m) => round((float) $m['costo_total'], 2), $costo_mensual);
@@ -507,143 +516,191 @@ if ($es_xlsx) {
     $xlsx = new XlsxWriter();
     $periodo_label = "Período: del $f_desde al $f_hasta";
 
-    // Resumen + comparativa
-    $xlsx->addSheet('Resumen');
-    $xlsx->addHeaderRow(['REPORTE DE MANTENIMIENTO'], true);
-    $xlsx->addRow([$periodo_label]);
-    $xlsx->addRow(['Sucursal: ' . $suc_label]);
-    $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
-    $xlsx->addRow(['Órdenes del periodo', (int) $totales['total_ordenes']]);
-    $xlsx->addRow(['Movimientos de refacciones', (int) $totales['total_movimientos_refacciones']]);
-    $xlsx->addRow(['Costo total en refacciones', round((float) $totales['costo_total_refacciones'], 2)]);
-    $prom_orden = ((int) $totales['total_ordenes'] > 0) ? round((float) $totales['costo_total_refacciones'] / (int) $totales['total_ordenes'], 2) : 0;
-    $xlsx->addRow(['Costo promedio por orden', $prom_orden]);
-    $xlsx->addRow(['Préstamos de herramientas', (int) $totales['total_prestamos']]);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $p_desde . ' a ' . $p_hasta . ')'], true);
-    $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
-    $cmp = function ($cur, $prev) {
-        $cur = (float) $cur; $prev = (float) $prev;
-        return [round($cur, 2), round($prev, 2), $prev > 0 ? round(($cur - $prev) / $prev * 100, 1) . '%' : 'n/d'];
+    // Celdas numéricas SUMABLES: dinero con formato $ y % reales.
+    $mny  = fn($v) => ['v' => round((float) $v, 2), 's' => 3];
+    $pctc = fn($v) => ['v' => round((float) $v, 1), 's' => 8];
+
+    $sec_titulos = [
+        'resumen'           => 'Resumen del período',
+        'refacciones'       => 'Refacciones más consumidas',
+        'equipos_caros'     => 'Equipos más caros de mantener',
+        'disciplinas'       => 'Distribución por disciplina',
+        'tendencia'         => 'Tendencia mensual (últimos 12 meses)',
+        'fallas'            => 'Equipos con más fallas',
+        'mtbf'              => 'MTBF - tiempo medio entre fallas',
+        'herramientas'      => 'Herramientas más prestadas',
+        'prestamos_tecnico' => 'Préstamos por técnico',
+        'componentes'       => 'Componentes en mal estado o críticos',
+        'revisiones'        => 'Próximas revisiones (60 días)',
+        'medidores'         => 'Consumos de servicios (medidores)',
+    ];
+    $sheet_names = [
+        'resumen' => 'Resumen', 'refacciones' => 'Refacciones', 'equipos_caros' => 'Equipos caros',
+        'disciplinas' => 'Disciplinas', 'tendencia' => 'Tendencia', 'fallas' => 'Equipos con fallas',
+        'mtbf' => 'MTBF', 'herramientas' => 'Herramientas', 'prestamos_tecnico' => 'Préstamos técnico',
+        'componentes' => 'Componentes', 'revisiones' => 'Próx. revisiones', 'medidores' => 'Medidores',
+    ];
+
+    $meta = function (XlsxWriter $xlsx, string $titulo) use ($periodo_label, $suc_label, $rep_user) {
+        $xlsx->addHeaderRow([mb_strtoupper($titulo)], true);
+        $xlsx->addRow([$periodo_label]);
+        $xlsx->addRow(['Sucursal: ' . $suc_label]);
+        $xlsx->addRow(['Generado: ' . date('d/m/Y H:i') . ($rep_user ? ' por ' . $rep_user : '')]);
+        $xlsx->addBlankRow();
     };
-    $xlsx->addRow(array_merge(['Órdenes'],               $cmp($totales['total_ordenes'],                 $totales_prev['total_ordenes'])));
-    $xlsx->addRow(array_merge(['Movimientos refacciones'], $cmp($totales['total_movimientos_refacciones'], $totales_prev['total_movimientos_refacciones'])));
-    $xlsx->addRow(array_merge(['Costo refacciones'],     $cmp($totales['costo_total_refacciones'],       $totales_prev['costo_total_refacciones'])));
-    $xlsx->addRow(array_merge(['Préstamos'],             $cmp($totales['total_prestamos'],               $totales_prev['total_prestamos'])));
 
-    // Refacciones
-    $xlsx->addSheet('Refacciones');
-    $xlsx->addHeaderRow(['REFACCIONES MÁS CONSUMIDAS'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Código', 'Nombre', 'Categoría', 'Veces usada', 'Unidades', 'Unidad', 'Costo total'], true);
-    foreach ($top_refacciones as $r) {
-        $xlsx->addRow([$r['codigo'], $r['nombre'], $r['categoria'] ?? '', (int) $r['veces_usada'],
-            round((float) $r['cantidad_total'], 2), $r['unidad_medida'], round((float) $r['costo_total'], 2)]);
+    $emit = function (XlsxWriter $xlsx, string $sec) use (
+        $mny, $pctc, $totales, $totales_prev, $p_desde, $p_hasta,
+        $top_refacciones, $costo_por_equipo, $costo_por_categoria, $costo_mensual,
+        $equipos_problematicos, $mtbf_equipos, $herramientas_top, $prestamos_por_tecnico,
+        $componentes_problema, $componentes_vencer, $med_resumen, $med_por_tipo
+    ) {
+        $hrs = fn($v) => ['v' => round((float) $v, 1), 's' => 6];   // horas / días (1 decimal)
+        switch ($sec) {
+
+        case 'resumen':
+            $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
+            $xlsx->addRow(['Órdenes del periodo', (int) $totales['total_ordenes']]);
+            $xlsx->addRow(['Movimientos de refacciones', (int) $totales['total_movimientos_refacciones']]);
+            $xlsx->addRow(['Costo total en refacciones', $mny($totales['costo_total_refacciones'])]);
+            $prom = ((int) $totales['total_ordenes'] > 0) ? (float) $totales['costo_total_refacciones'] / (int) $totales['total_ordenes'] : 0;
+            $xlsx->addRow(['Costo promedio por orden', $mny($prom)]);
+            $xlsx->addRow(['Préstamos de herramientas', (int) $totales['total_prestamos']]);
+            $xlsx->addBlankRow();
+            $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $p_desde . ' a ' . $p_hasta . ')'], true);
+            $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
+            $cmp = function ($cur, $prev, bool $money = false) use ($mny, $pctc) {
+                $cur = (float) $cur; $prev = (float) $prev;
+                $var = $prev > 0 ? $pctc(($cur - $prev) / $prev * 100) : 'n/d';
+                $fmt = $money ? $mny : fn($x) => (int) $x;
+                return [$fmt($cur), $fmt($prev), $var];
+            };
+            $xlsx->addRow(array_merge(['Órdenes'],                  $cmp($totales['total_ordenes'],                 $totales_prev['total_ordenes'])));
+            $xlsx->addRow(array_merge(['Movimientos refacciones'],  $cmp($totales['total_movimientos_refacciones'], $totales_prev['total_movimientos_refacciones'])));
+            $xlsx->addRow(array_merge(['Costo refacciones'],        $cmp($totales['costo_total_refacciones'],       $totales_prev['costo_total_refacciones'], true)));
+            $xlsx->addRow(array_merge(['Préstamos'],                $cmp($totales['total_prestamos'],               $totales_prev['total_prestamos'])));
+            break;
+
+        case 'refacciones':
+            $xlsx->addHeaderRow(['Código', 'Nombre', 'Categoría', 'Veces usada', 'Unidades', 'Unidad', 'Costo total ($)'], true);
+            $t = 0.0;
+            foreach ($top_refacciones as $r) {
+                $t += (float) $r['costo_total'];
+                $xlsx->addRow([$r['codigo'], $r['nombre'], $r['categoria'] ?? '', (int) $r['veces_usada'],
+                    round((float) $r['cantidad_total'], 2), $r['unidad_medida'], $mny($r['costo_total'])]);
+            }
+            $xlsx->addRow(['', '', '', '', '', 'TOTAL', $mny($t)]);
+            break;
+
+        case 'equipos_caros':
+            $xlsx->addHeaderRow(['Código', 'Equipo', 'Órdenes', 'Líneas refacc.', 'Unidades', 'Costo total ($)'], true);
+            $t = 0.0;
+            foreach ($costo_por_equipo as $e) {
+                $t += (float) $e['costo_total'];
+                $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], (int) $e['num_ordenes'],
+                    (int) $e['lineas_refacciones'], round((float) $e['unidades_total'], 2), $mny($e['costo_total'])]);
+            }
+            $xlsx->addRow(['', '', '', '', 'TOTAL', $mny($t)]);
+            break;
+
+        case 'disciplinas':
+            $xlsx->addHeaderRow(['Categoría', 'Órdenes', 'Costo refacciones ($)'], true);
+            $t = 0.0;
+            foreach ($costo_por_categoria as $c) {
+                $t += (float) $c['costo_refacciones'];
+                $xlsx->addRow([$c['categoria_nombre'] ?? '— Sin categoría —', (int) $c['num_ordenes'], $mny($c['costo_refacciones'])]);
+            }
+            $xlsx->addRow(['TOTAL', '', $mny($t)]);
+            break;
+
+        case 'tendencia':
+            $xlsx->addHeaderRow(['Mes', 'Órdenes', 'Líneas', 'Unidades', 'Costo total ($)'], true);
+            $t = 0.0;
+            foreach ($costo_mensual as $m) {
+                $t += (float) $m['costo_total'];
+                $xlsx->addRow([date('Y-m', strtotime($m['mes'] . '-01')), (int) $m['ordenes'], (int) $m['lineas'],
+                    round((float) $m['unidades'], 2), $mny($m['costo_total'])]);
+            }
+            $xlsx->addRow(['TOTAL', '', '', '', $mny($t)]);
+            break;
+
+        case 'fallas':
+            $xlsx->addHeaderRow(['Código', 'Equipo', 'Sucursal', 'Fallas', 'Resueltas', 'Horas prom. resolución'], true);
+            foreach ($equipos_problematicos as $e) {
+                $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], $e['sucursal_codigo'], (int) $e['num_incidencias'],
+                    (int) $e['resueltas'], !empty($e['horas_promedio_resolucion']) ? $hrs($e['horas_promedio_resolucion']) : '']);
+            }
+            break;
+
+        case 'mtbf':
+            $xlsx->addHeaderRow(['Código', 'Equipo', 'Núm. fallas', 'Primera falla', 'Última falla', 'MTBF (días)'], true);
+            foreach ($mtbf_equipos as $m) {
+                $xlsx->addRow([$m['codigo_inventario'], $m['equipo_nombre'], (int) $m['num_fallas'],
+                    date('Y-m-d', strtotime($m['primera_falla'])), date('Y-m-d', strtotime($m['ultima_falla'])),
+                    !empty($m['mtbf_dias']) ? $hrs($m['mtbf_dias']) : '']);
+            }
+            break;
+
+        case 'herramientas':
+            $xlsx->addHeaderRow(['Código', 'Herramienta', 'Tipo', 'Estado', 'Préstamos', 'Daños', 'Extravíos'], true);
+            foreach ($herramientas_top as $h) {
+                $xlsx->addRow([$h['codigo'], $h['nombre'], $h['tipo'] ?? '', $h['estado'], (int) $h['num_prestamos'],
+                    (int) $h['prestamos_con_dano'], (int) $h['extravios']]);
+            }
+            break;
+
+        case 'prestamos_tecnico':
+            $xlsx->addHeaderRow(['Técnico', 'Total', 'Activos', 'Devueltos', 'Con daño', 'Extraviados', 'Vencidos'], true);
+            foreach ($prestamos_por_tecnico as $tt) {
+                $xlsx->addRow([$tt['nombre_completo'], (int) $tt['total_prestamos'], (int) $tt['activos'], (int) $tt['devueltos'],
+                    (int) $tt['con_dano'], (int) $tt['extraviados'], (int) $tt['vencidos']]);
+            }
+            break;
+
+        case 'componentes':
+            $xlsx->addHeaderRow(['Componente', 'Tipo', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Próxima revisión'], true);
+            foreach ($componentes_problema as $c) {
+                $xlsx->addRow([$c['componente_nombre'], $c['tipo'] ?? '', $c['equipo_nombre'], $c['sucursal_codigo'],
+                    $c['estado'], $c['criticidad'], !empty($c['proxima_revision']) ? date('Y-m-d', strtotime($c['proxima_revision'])) : '']);
+            }
+            break;
+
+        case 'revisiones':
+            $xlsx->addHeaderRow(['Componente', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Fecha revisión', 'Días restantes'], true);
+            foreach ($componentes_vencer as $c) {
+                $xlsx->addRow([$c['componente_nombre'], $c['equipo_nombre'], $c['sucursal_codigo'], $c['estado'], $c['criticidad'],
+                    date('Y-m-d', strtotime($c['proxima_revision'])), (int) $c['dias_restantes']]);
+            }
+            break;
+
+        case 'medidores':
+            $xlsx->addRow(['Costo estimado total', $mny($med_resumen['costo_total'])]);
+            $xlsx->addBlankRow();
+            $xlsx->addHeaderRow(['Tipo', 'Unidad', 'Lecturas', 'Consumo total', 'Costo estimado ($)'], true);
+            foreach ($med_por_tipo as $tm) {
+                $xlsx->addRow([$tm['nombre'], $tm['unidad'], (int) $tm['num_lecturas'],
+                    round((float) $tm['consumo_total'], 3), $mny($tm['costo_total'])]);
+            }
+            break;
+        }
+    };
+
+    // ¿Una sola sección? (botón por sección, listo para imprimir en una hoja)
+    if ($seccion_xlsx !== '' && isset($sec_titulos[$seccion_xlsx])) {
+        $xlsx->addSheet($sheet_names[$seccion_xlsx]);
+        $xlsx->setPageSetup(1, 1, 'landscape');
+        $meta($xlsx, $sec_titulos[$seccion_xlsx]);
+        $emit($xlsx, $seccion_xlsx);
+        $xlsx->download('reporte_mant_' . $seccion_xlsx . '_' . date('Ymd_His') . '.xlsx');
+        exit;
     }
 
-    // Equipos caros
-    $xlsx->addSheet('Equipos caros');
-    $xlsx->addHeaderRow(['EQUIPOS MÁS CAROS DE MANTENER'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Código', 'Equipo', 'Órdenes', 'Líneas refacc.', 'Unidades', 'Costo total'], true);
-    foreach ($costo_por_equipo as $e) {
-        $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], (int) $e['num_ordenes'],
-            (int) $e['lineas_refacciones'], round((float) $e['unidades_total'], 2), round((float) $e['costo_total'], 2)]);
+    // Exportación completa (todas las hojas)
+    foreach ($sec_titulos as $key => $titulo) {
+        $xlsx->addSheet($sheet_names[$key]);
+        $meta($xlsx, $titulo);
+        $emit($xlsx, $key);
     }
-
-    // Disciplinas
-    $xlsx->addSheet('Disciplinas');
-    $xlsx->addHeaderRow(['DISTRIBUCIÓN POR DISCIPLINA'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Categoría', 'Órdenes', 'Costo refacciones'], true);
-    foreach ($costo_por_categoria as $c) {
-        $xlsx->addRow([$c['categoria_nombre'] ?? '— Sin categoría —', (int) $c['num_ordenes'], round((float) $c['costo_refacciones'], 2)]);
-    }
-
-    // Tendencia
-    $xlsx->addSheet('Tendencia');
-    $xlsx->addHeaderRow(['TENDENCIA MENSUAL (ÚLTIMOS 12 MESES)'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Mes', 'Órdenes', 'Líneas', 'Unidades', 'Costo total'], true);
-    foreach ($costo_mensual as $m) {
-        $xlsx->addRow([date('Y-m', strtotime($m['mes'] . '-01')), (int) $m['ordenes'], (int) $m['lineas'],
-            round((float) $m['unidades'], 2), round((float) $m['costo_total'], 2)]);
-    }
-
-    // Fallas
-    $xlsx->addSheet('Equipos con fallas');
-    $xlsx->addHeaderRow(['EQUIPOS CON MÁS FALLAS'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Código', 'Equipo', 'Sucursal', 'Fallas', 'Resueltas', 'Horas prom. resolución'], true);
-    foreach ($equipos_problematicos as $e) {
-        $xlsx->addRow([$e['codigo_inventario'], $e['equipo_nombre'], $e['sucursal_codigo'], (int) $e['num_incidencias'],
-            (int) $e['resueltas'], !empty($e['horas_promedio_resolucion']) ? round((float) $e['horas_promedio_resolucion'], 1) : '']);
-    }
-
-    // MTBF
-    $xlsx->addSheet('MTBF');
-    $xlsx->addHeaderRow(['MTBF - TIEMPO MEDIO ENTRE FALLAS'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Código', 'Equipo', 'Núm. fallas', 'Primera falla', 'Última falla', 'MTBF (días)'], true);
-    foreach ($mtbf_equipos as $m) {
-        $xlsx->addRow([$m['codigo_inventario'], $m['equipo_nombre'], (int) $m['num_fallas'],
-            date('Y-m-d', strtotime($m['primera_falla'])), date('Y-m-d', strtotime($m['ultima_falla'])),
-            !empty($m['mtbf_dias']) ? round((float) $m['mtbf_dias'], 1) : '']);
-    }
-
-    // Herramientas
-    $xlsx->addSheet('Herramientas');
-    $xlsx->addHeaderRow(['HERRAMIENTAS MÁS PRESTADAS'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Código', 'Herramienta', 'Tipo', 'Estado', 'Préstamos', 'Daños', 'Extravíos'], true);
-    foreach ($herramientas_top as $h) {
-        $xlsx->addRow([$h['codigo'], $h['nombre'], $h['tipo'] ?? '', $h['estado'], (int) $h['num_prestamos'],
-            (int) $h['prestamos_con_dano'], (int) $h['extravios']]);
-    }
-
-    // Préstamos por técnico
-    $xlsx->addSheet('Préstamos técnico');
-    $xlsx->addHeaderRow(['PRÉSTAMOS POR TÉCNICO'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Técnico', 'Total', 'Activos', 'Devueltos', 'Con daño', 'Extraviados', 'Vencidos'], true);
-    foreach ($prestamos_por_tecnico as $t) {
-        $xlsx->addRow([$t['nombre_completo'], (int) $t['total_prestamos'], (int) $t['activos'], (int) $t['devueltos'],
-            (int) $t['con_dano'], (int) $t['extraviados'], (int) $t['vencidos']]);
-    }
-
-    // Componentes
-    $xlsx->addSheet('Componentes');
-    $xlsx->addHeaderRow(['COMPONENTES EN MAL ESTADO O CRÍTICOS'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Componente', 'Tipo', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Próxima revisión'], true);
-    foreach ($componentes_problema as $c) {
-        $xlsx->addRow([$c['componente_nombre'], $c['tipo'] ?? '', $c['equipo_nombre'], $c['sucursal_codigo'],
-            $c['estado'], $c['criticidad'], !empty($c['proxima_revision']) ? date('Y-m-d', strtotime($c['proxima_revision'])) : '']);
-    }
-
-    // Próximas revisiones
-    $xlsx->addSheet('Próx. revisiones');
-    $xlsx->addHeaderRow(['PRÓXIMAS REVISIONES (60 DÍAS)'], true);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Componente', 'Equipo', 'Sucursal', 'Estado', 'Criticidad', 'Fecha revisión', 'Días restantes'], true);
-    foreach ($componentes_vencer as $c) {
-        $xlsx->addRow([$c['componente_nombre'], $c['equipo_nombre'], $c['sucursal_codigo'], $c['estado'], $c['criticidad'],
-            date('Y-m-d', strtotime($c['proxima_revision'])), (int) $c['dias_restantes']]);
-    }
-
-    // Medidores
-    $xlsx->addSheet('Medidores');
-    $xlsx->addHeaderRow(['CONSUMOS DE SERVICIOS (MEDIDORES)'], true);
-    $xlsx->addRow(['Costo estimado total', round((float) $med_resumen['costo_total'], 2)]);
-    $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Tipo', 'Unidad', 'Lecturas', 'Consumo total', 'Costo estimado'], true);
-    foreach ($med_por_tipo as $t) {
-        $xlsx->addRow([$t['nombre'], $t['unidad'], (int) $t['num_lecturas'],
-            round((float) $t['consumo_total'], 3), round((float) $t['costo_total'], 2)]);
-    }
-
     $xlsx->download('reporte_mantenimiento_' . date('Ymd_His') . '.xlsx');
     exit;
 }
@@ -777,6 +834,10 @@ require_once __DIR__ . '/config/header.php';
     </div>
 
     <!-- KPIs generales del periodo -->
+    <div class="flex items-center gap-2">
+        <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wide">Resumen del período</span>
+        <?= $btn_export_sec('resumen') ?>
+    </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="bg-white rounded-xl border border-zinc-200 p-4">
             <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Órdenes del periodo</div>
@@ -834,6 +895,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="package" class="w-4 h-4 text-bacal-700"></i>
                     Refacciones más consumidas
+                    <?= $btn_export_sec('refacciones') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Qué piezas debes tener siempre en stock</p>
             </div>
@@ -886,6 +948,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="cog" class="w-4 h-4 text-bacal-700"></i>
                     Equipos más caros de mantener
+                    <?= $btn_export_sec('equipos_caros') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Candidatos a reemplazo o atención especial</p>
             </div>
@@ -932,6 +995,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="pie-chart" class="w-4 h-4 text-bacal-700"></i>
                     Distribución por disciplina
+                    <?= $btn_export_sec('disciplinas') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Cómo se reparte el costo entre mecánica, eléctrica, etc.</p>
             </div>
@@ -972,6 +1036,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="trending-up" class="w-4 h-4 text-bacal-700"></i>
                     Tendencia de gasto mensual
+                    <?= $btn_export_sec('tendencia') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Últimos 12 meses (no usa filtros de fecha)</p>
             </div>
@@ -1017,6 +1082,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="alert-triangle" class="w-4 h-4 text-bacal-700"></i>
                     Equipos con más fallas
+                    <?= $btn_export_sec('fallas') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Top equipos con incidencias recurrentes</p>
             </div>
@@ -1058,6 +1124,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="activity" class="w-4 h-4 text-bacal-700"></i>
                     MTBF — Tiempo entre fallas
+                    <?= $btn_export_sec('mtbf') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Días promedio entre fallas (menor = peor confiabilidad)</p>
             </div>
@@ -1102,6 +1169,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="hammer" class="w-4 h-4 text-bacal-700"></i>
                     Herramientas más prestadas
+                    <?= $btn_export_sec('herramientas') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Candidatas a duplicar o mantenimiento preventivo</p>
             </div>
@@ -1149,6 +1217,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="users" class="w-4 h-4 text-bacal-700"></i>
                     Préstamos por técnico
+                    <?= $btn_export_sec('prestamos_tecnico') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Quién usa más herramientas y su responsabilidad</p>
             </div>
@@ -1190,6 +1259,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="alert-octagon" class="w-4 h-4 text-bacal-700"></i>
                     Componentes en mal estado o críticos
+                    <?= $btn_export_sec('componentes') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Requieren atención prioritaria</p>
             </div>
@@ -1250,6 +1320,7 @@ require_once __DIR__ . '/config/header.php';
                 <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                     <i data-lucide="calendar-clock" class="w-4 h-4 text-bacal-700"></i>
                     Próximas revisiones (60 días)
+                    <?= $btn_export_sec('revisiones') ?>
                 </h3>
                 <p class="text-[10px] text-zinc-500 mt-0.5">Planea visitas preventivas</p>
             </div>
@@ -1318,6 +1389,7 @@ require_once __DIR__ . '/config/header.php';
             <h3 class="font-display text-base font-bold text-zinc-900 flex items-center gap-2">
                 <i data-lucide="layers" class="w-4 h-4 text-bacal-700"></i>
                 Consumo por tipo de servicio
+                <?= $btn_export_sec('medidores') ?>
             </h3>
             <p class="text-[10px] text-zinc-500 mt-0.5">Dónde se concentra el gasto de servicios</p>
         </div>

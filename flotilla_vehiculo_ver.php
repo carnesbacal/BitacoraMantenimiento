@@ -497,48 +497,43 @@ if (es_post() && $puede_gestionar) {
             }
         }
 
-        // --- Viaje ---
+        // --- Viaje: registrar salida ---
         if ($op === 'viaje_crear') {
             $km_sal = (float) input('km_salida', 0);
-            $vd = [
-                'vehiculo_id'           => $id,
-                'conductor_id'          => (int) input('conductor_id_viaje', 0) ?: null,
-                'sucursal_origen_id'    => (int) input('sucursal_origen_id', 0) ?: null,
-                'sucursal_destino_id'   => (int) input('sucursal_destino_id', 0) ?: null,
-                'destino_descripcion'   => trim((string) input('destino_desc', '')) ?: null,
-                'fecha_salida'          => trim((string) input('fecha_salida', date('Y-m-d H:i:s'))),
-                'km_salida'             => $km_sal,
-                'proposito'             => trim((string) input('proposito', '')) ?: null,
-                'carga_descripcion'     => trim((string) input('carga_desc', '')) ?: null,
-                'carga_peso_kg'         => (float) input('carga_peso', 0) ?: null,
-                'estado'                => 'en_ruta',
-                'observaciones'         => trim((string) input('obs_viaje', '')) ?: null,
-                'creado_por'            => $u['id'],
-            ];
+            $fecha  = trim((string) input('fecha_viaje', date('Y-m-d'))) ?: date('Y-m-d');
+            $hora_s = trim((string) input('hora_salida', ''));
+            $fecha_salida = $fecha . ' ' . ($hora_s !== '' ? $hora_s : date('H:i')) . ':00';
+            $rep_libre = trim((string) input('repartidor_libre', ''));
+            $conductor = (int) input('conductor_id_viaje', 0) ?: null;
+            if ($rep_libre !== '') $conductor = null;   // el repartidor escrito tiene precedencia
+            $clientes = array_map('strval', (array) ($_POST['clientes'] ?? []));
             if ($km_sal <= 0) $errores[] = 'El km de salida es obligatorio.';
             if (empty($errores)) {
-                $cols = implode(',', array_keys($vd));
-                $phs  = ':' . implode(',:', array_keys($vd));
-                db_exec("INSERT INTO flotilla_viajes ($cols) VALUES ($phs)", $vd);
-                flash_set('exito', 'Viaje registrado.');
+                flotilla_viaje_crear([
+                    'vehiculo_id'       => $id,
+                    'nombre'            => input('nombre_viaje', ''),
+                    'conductor_id'      => $conductor,
+                    'repartidor_nombre' => $rep_libre,
+                    'fecha_salida'      => $fecha_salida,
+                    'km_salida'         => $km_sal,
+                    'observaciones'     => input('obs_viaje', ''),
+                    'creado_por'        => $u['id'],
+                ], $clientes);
+                flash_set('exito', 'Viaje registrado (en ruta).');
                 header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=viajes"));
                 exit;
             }
         }
 
-        // --- Cerrar viaje ---
+        // --- Cerrar viaje (llegada) ---
         if ($op === 'viaje_cerrar') {
             $viaje_id = (int) input('viaje_id', 0);
             $km_ll    = (float) input('km_llegada', 0);
-            if ($km_ll > 0) {
-                db_exec("UPDATE flotilla_viajes SET km_llegada = :km, fecha_llegada = NOW(), estado = 'completado' WHERE id = :id AND vehiculo_id = :vid",
-                    ['km' => $km_ll, 'id' => $viaje_id, 'vid' => $id]);
-                if ($km_ll > $vehiculo['km_actual']) {
-                    db_exec("UPDATE flotilla_vehiculos SET km_actual = :km WHERE id = :id AND km_actual < :km2",
-                        ['km' => $km_ll, 'id' => $id, 'km2' => $km_ll]);
-                    flotilla_odometro_registrar($id, (int) round($km_ll), 'viaje', (int) $vehiculo['km_actual'], $u['id']);
-                }
+            $hora_ll  = trim((string) input('hora_llegada', ''));
+            if (flotilla_viaje_cerrar_llegada($viaje_id, $id, $km_ll, $hora_ll ?: null, (int) $u['id'])) {
                 flash_set('exito', 'Viaje cerrado.');
+            } else {
+                flash_set('error', 'No se pudo cerrar el viaje. Revisa el km de llegada.');
             }
             header('Location: ' . url("flotilla_vehiculo_ver.php?id=$id&tab=viajes"));
             exit;
@@ -1747,6 +1742,8 @@ require_once __DIR__ . '/config/header.php';
         <div class="space-y-2">
             <?php foreach ($viajes as $v):
                 $en_ruta = $v['estado'] === 'en_ruta';
+                $rep = flotilla_viaje_repartidor($v);
+                $cli = flotilla_viaje_clientes((int) $v['id']);
             ?>
             <div class="bg-white rounded-xl border <?= $en_ruta ? 'border-blue-300 bg-blue-50' : 'border-zinc-200' ?> p-4">
                 <div class="flex items-start justify-between gap-3">
@@ -1754,18 +1751,24 @@ require_once __DIR__ . '/config/header.php';
                         <div class="w-8 h-8 rounded-lg <?= $en_ruta ? 'bg-blue-100 text-blue-700' : 'bg-zinc-100 text-zinc-600' ?> flex items-center justify-center flex-shrink-0">
                             <i data-lucide="<?= $en_ruta ? 'navigation' : 'map-pin' ?>" class="w-4 h-4"></i>
                         </div>
-                        <div>
-                            <div class="font-semibold text-sm text-zinc-900">
-                                <?= $v['suc_origen'] ? e($v['suc_origen']) : 'Origen' ?>
-                                <i data-lucide="arrow-right" class="w-3.5 h-3.5 inline text-zinc-400"></i>
-                                <?= $v['suc_destino'] ? e($v['suc_destino']) : ($v['destino_descripcion'] ? e($v['destino_descripcion']) : 'Destino') ?>
+                        <div class="min-w-0">
+                            <div class="font-semibold text-sm text-zinc-900 truncate">
+                                <?= !empty($v['nombre']) ? e($v['nombre']) : 'Viaje' ?>
                             </div>
                             <div class="text-xs text-zinc-500 mt-0.5">
-                                <?= fmt_fecha_hora($v['fecha_salida']) ?>
-                                <?= $v['conductor_nombre'] ? ' · ' . e($v['conductor_nombre']) : '' ?>
-                                <?= $v['km_recorridos'] ? ' · ' . number_format($v['km_recorridos']) . ' km' : '' ?>
-                                <?= $v['proposito'] ? ' · ' . e($v['proposito']) : '' ?>
+                                Salida: <?= fmt_fecha_hora($v['fecha_salida']) ?>
+                                <?php if (!empty($v['fecha_llegada'])): ?> · Llegada: <?= fmt_fecha_hora($v['fecha_llegada']) ?><?php endif; ?>
+                                <?= $rep ? ' · ' . e($rep) : '' ?>
+                                <?= !empty($v['km_recorridos']) ? ' · ' . number_format($v['km_recorridos']) . ' km' : '' ?>
                             </div>
+                            <?php if (!empty($cli)): ?>
+                            <div class="text-[11px] text-zinc-600 mt-1 flex flex-wrap items-center gap-1">
+                                <span class="text-zinc-400">Clientes:</span>
+                                <?php foreach ($cli as $c): ?>
+                                <span class="px-1.5 py-0.5 rounded bg-zinc-100 border border-zinc-200"><?= e($c['cliente']) ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
@@ -1793,13 +1796,18 @@ require_once __DIR__ . '/config/header.php';
                 </div>
                 <?php if ($en_ruta && $puede_gestionar): ?>
                 <div id="cerrar-viaje-<?= $v['id'] ?>" class="hidden mt-3 pt-3 border-t border-blue-200">
-                    <form method="POST" class="flex items-end gap-2">
+                    <form method="POST" class="flex items-end gap-2 flex-wrap">
                         <?= csrf_input() ?>
                         <input type="hidden" name="op" value="viaje_cerrar">
                         <input type="hidden" name="viaje_id" value="<?= $v['id'] ?>">
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-zinc-700 mb-1">Km de llegada</label>
-                            <input type="number" name="km_llegada" required min="<?= $v['km_salida'] ?>" step="0.1"
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-700 mb-1">Hora llegada</label>
+                            <input type="time" name="hora_llegada" value="<?= date('H:i') ?>"
+                                   class="px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                        </div>
+                        <div class="flex-1 min-w-[120px]">
+                            <label class="block text-xs font-bold text-zinc-700 mb-1">Km de llegada <span class="text-red-500">*</span></label>
+                            <input type="number" name="km_llegada" required min="<?= $v['km_salida'] ?>" step="1"
                                    placeholder="<?= $v['km_salida'] + 1 ?>+"
                                    class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                         </div>
@@ -1823,57 +1831,56 @@ require_once __DIR__ . '/config/header.php';
             <form method="POST" class="space-y-3">
                 <?= csrf_input() ?>
                 <input type="hidden" name="op" value="viaje_crear">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-zinc-700 mb-1">Sucursal origen</label>
-                        <select name="sucursal_origen_id" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
-                            <option value="">— Sin especificar —</option>
-                            <?php foreach ($sucursales as $s): ?>
-                            <option value="<?= $s['id'] ?>" <?= $vehiculo['sucursal_id'] == $s['id'] ? 'selected' : '' ?>><?= e($s['nombre']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-zinc-700 mb-1">Sucursal destino</label>
-                        <select name="sucursal_destino_id" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
-                            <option value="">— Otro destino —</option>
-                            <?php foreach ($sucursales as $s): ?>
-                            <option value="<?= $s['id'] ?>"><?= e($s['nombre']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
                 <div>
-                    <label class="block text-xs font-bold text-zinc-700 mb-1">Destino (si no es sucursal)</label>
-                    <input type="text" name="destino_desc" maxlength="200" placeholder="Dirección o descripción"
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Nombre del viaje <span class="text-red-500">*</span></label>
+                    <input type="text" name="nombre_viaje" required maxlength="150" placeholder="Ej. Ruta centro, Reparto zona norte…"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-3 gap-3">
                     <div>
-                        <label class="block text-xs font-bold text-zinc-700 mb-1">Fecha y hora salida</label>
-                        <input type="datetime-local" name="fecha_salida" value="<?= date('Y-m-d\TH:i') ?>"
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Fecha <span class="text-red-500">*</span></label>
+                        <input type="date" name="fecha_viaje" required value="<?= date('Y-m-d') ?>"
+                               class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-zinc-700 mb-1">Hora salida</label>
+                        <input type="time" name="hora_salida" value="<?= date('H:i') ?>"
                                class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-zinc-700 mb-1">Km salida <span class="text-red-500">*</span></label>
-                        <input type="number" name="km_salida" required min="0" step="0.1" value="<?= $vehiculo['km_actual'] ?>"
+                        <input type="number" name="km_salida" required min="0" step="1" value="<?= $vehiculo['km_actual'] ?>"
                                class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-zinc-700 mb-1">Conductor</label>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Repartidor</label>
                     <select name="conductor_id_viaje" class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-bacal-500">
-                        <option value="">— Sin especificar —</option>
+                        <option value="">— Elegir del catálogo —</option>
                         <?php foreach ($conductores as $c): ?>
-                        <option value="<?= $c['id'] ?>" <?= (int)$vehiculo['conductor_asignado_id'] === (int)$c['id'] ? 'selected' : '' ?>>
-                            <?= e($c['nombre_completo']) ?>
-                        </option>
+                        <option value="<?= $c['id'] ?>" <?= (int) $vehiculo['conductor_asignado_id'] === (int) $c['id'] ? 'selected' : '' ?>><?= e($c['nombre_completo']) ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <input type="text" name="repartidor_libre" maxlength="120" placeholder="…o escribe un repartidor no registrado"
+                           class="w-full mt-2 px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                    <p class="text-[10px] text-zinc-400 mt-0.5">Si escribes un nombre aquí, tiene prioridad sobre el catálogo.</p>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-zinc-700 mb-1">Propósito / motivo</label>
-                    <input type="text" name="proposito" maxlength="200" placeholder="Entrega, recogida, mantenimiento…"
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Clientes a los que entrega</label>
+                    <div id="clientes-rows" class="space-y-2">
+                        <div class="flex items-center gap-2">
+                            <input type="text" name="clientes[]" maxlength="200" placeholder="Nombre del cliente"
+                                   class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
+                            <button type="button" onclick="quitarClienteRow(this)" class="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50"><i data-lucide="x" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                    <button type="button" onclick="agregarClienteRow()" class="mt-2 text-xs font-semibold text-bacal-700 hover:underline inline-flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Agregar cliente
+                    </button>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-zinc-700 mb-1">Observaciones (opcional)</label>
+                    <input type="text" name="obs_viaje" maxlength="255" placeholder="Notas del viaje"
                            class="w-full px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">
                 </div>
                 <div class="flex justify-end gap-2 pt-2 border-t border-zinc-100">
@@ -1882,6 +1889,23 @@ require_once __DIR__ . '/config/header.php';
                     <button type="submit" class="px-4 py-2 rounded-lg bg-bacal-700 text-white text-sm font-semibold hover:bg-bacal-800">Registrar salida</button>
                 </div>
             </form>
+            <script>
+            function agregarClienteRow() {
+                var cont = document.getElementById('clientes-rows');
+                var div = document.createElement('div');
+                div.className = 'flex items-center gap-2';
+                div.innerHTML = '<input type="text" name="clientes[]" maxlength="200" placeholder="Nombre del cliente" class="flex-1 px-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-bacal-500">' +
+                    '<button type="button" onclick="quitarClienteRow(this)" class="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50"><i data-lucide="x" class="w-4 h-4"></i></button>';
+                cont.appendChild(div);
+                if (window.lucide) lucide.createIcons();
+                div.querySelector('input').focus();
+            }
+            function quitarClienteRow(btn) {
+                var cont = document.getElementById('clientes-rows');
+                if (cont.children.length > 1) btn.parentNode.remove();
+                else btn.parentNode.querySelector('input').value = '';
+            }
+            </script>
         </div>
     </div>
 
