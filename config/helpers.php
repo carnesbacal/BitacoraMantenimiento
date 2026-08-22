@@ -102,7 +102,7 @@ function fmt_fecha(?string $fecha, bool $con_hora = true): string {
 
 /**
  * Formatea fecha con hora. Alias de fmt_fecha(\$fecha, true).
- * Usado en flotilla (combustible, viajes, siniestros, checklist) y otras vistas.
+ * Usado en combustible, viajes, siniestros, checklist y otras vistas.
  */
 function fmt_fecha_hora(?string $fecha): string {
     return fmt_fecha($fecha, true);

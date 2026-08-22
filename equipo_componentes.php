@@ -19,7 +19,7 @@ $puede_gestionar = $es_admin || tiene_permiso('resolver'); // técnicos también
 $equipo_id = (int) input('id', 0);
 if ($equipo_id <= 0) {
     flash_set('error', 'Equipo no especificado.');
-    header('Location: ' . url('equipos.php'));
+    header('Location: ' . url('admin/equipos.php'));
     exit;
 }
 
@@ -35,14 +35,14 @@ $equipo = db_one(
 
 if (!$equipo) {
     flash_set('error', 'Equipo no encontrado.');
-    header('Location: ' . url('equipos.php'));
+    header('Location: ' . url('admin/equipos.php'));
     exit;
 }
 
 // Permisos por sucursal
 if (!tiene_permiso('ver_todas_sucursales') && (int) $u['sucursal_id'] !== (int) $equipo['sucursal_id']) {
     flash_set('error', 'No tienes permiso para ver este equipo.');
-    header('Location: ' . url('equipos.php'));
+    header('Location: ' . url('admin/equipos.php'));
     exit;
 }
 

@@ -31,13 +31,13 @@ $equipo = $equipo_id > 0
 
 if (!$equipo) {
     flash_set('error', 'Equipo no encontrado.');
-    header('Location: ' . url('equipos.php'));
+    header('Location: ' . url('admin/equipos.php'));
     exit;
 }
 
 if (!tiene_permiso('ver_todas_sucursales') && (int) $u['sucursal_id'] !== (int) $equipo['sucursal_id']) {
     flash_set('error', 'No tienes permiso para este equipo.');
-    header('Location: ' . url('equipos.php'));
+    header('Location: ' . url('admin/equipos.php'));
     exit;
 }
 

@@ -4,3 +4,5 @@ config/db.php
 Thumbs.db
 backups/
 graphify-out/
+assets/uploads/*
+!assets/uploads/.gitkeep

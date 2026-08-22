@@ -32,7 +32,7 @@ $like = '%' . $q . '%';
 $resultados = [
     'incidencias'   => [], 'equipos'      => [], 'usuarios'     => [], 'kb'       => [],
     'mantenimientos'=> [], 'refacciones'  => [], 'herramientas' => [], 'medidores'=> [],
-    'recordatorios' => [], 'vehiculos'    => [], 'conductores'  => [], 'proveedores' => [],
+    'recordatorios' => [], 'proveedores' => [],
 ];
 
 // ============================================================================
@@ -266,43 +266,6 @@ try {
 } catch (Throwable $e) {}
 
 // ============================================================================
-// FLOTILLA — VEHÍCULOS
-// ============================================================================
-try {
-    $tabla_flot = db_one("SHOW TABLES LIKE 'flotilla_vehiculos'");
-    if ($tabla_flot) {
-        $resultados['vehiculos'] = db_all(
-            "SELECT v.id, v.placas, v.alias, v.marca, v.modelo, v.anio, v.activo,
-                    t.nombre AS tipo_nombre
-             FROM flotilla_vehiculos v
-             LEFT JOIN flotilla_tipos_vehiculo t ON v.tipo_id = t.id
-             WHERE (v.placas LIKE :q1 OR v.alias LIKE :q2 OR v.marca LIKE :q3 OR v.modelo LIKE :q4)
-             ORDER BY v.activo DESC, v.placas ASC
-             LIMIT 6",
-            ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like]
-        );
-    }
-} catch (Throwable $e) {}
-
-// ============================================================================
-// FLOTILLA — CONDUCTORES
-// ============================================================================
-try {
-    $tabla_cond = db_one("SHOW TABLES LIKE 'flotilla_conductores'");
-    if ($tabla_cond) {
-        $resultados['conductores'] = db_all(
-            "SELECT c.id, c.nombre_completo, c.licencia_numero, c.licencia_tipo,
-                    c.telefono, c.activo
-             FROM flotilla_conductores c
-             WHERE (c.nombre_completo LIKE :q1 OR c.licencia_numero LIKE :q2)
-             ORDER BY c.activo DESC, c.nombre_completo ASC
-             LIMIT 5",
-            ['q1' => $like, 'q2' => $like]
-        );
-    }
-} catch (Throwable $e) {}
-
-// ============================================================================
 // PROVEEDORES
 // ============================================================================
 try {
@@ -500,43 +463,6 @@ if (!empty($resultados['recordatorios'])) {
         ];
     }
     $grupos[] = ['nombre' => 'Recordatorios', 'icono' => 'bell', 'items' => $items];
-}
-
-if (!empty($resultados['vehiculos'])) {
-    $items = [];
-    foreach ($resultados['vehiculos'] as $r) {
-        $label_activo = (int) $r['activo'] === 0 ? 'BAJA' : null;
-        $items[] = [
-            'tipo'        => 'vehiculo',
-            'titulo'      => strtoupper($r['placas']) . ($r['alias'] ? ' · ' . $r['alias'] : ''),
-            'subtitulo'   => trim(($r['marca'] ?? '') . ' ' . ($r['modelo'] ?? '') . ($r['anio'] ? ' ' . $r['anio'] : '')) .
-                             ($r['tipo_nombre'] ? ' · ' . $r['tipo_nombre'] : ''),
-            'badge'       => $label_activo,
-            'badge_color' => '#71717a',
-            'url'         => url_relativa('flotilla_vehiculo_ver.php?id=' . $r['id']),
-            'icono'       => 'car',
-        ];
-    }
-    $grupos[] = ['nombre' => 'Vehículos', 'icono' => 'car', 'items' => $items];
-}
-
-if (!empty($resultados['conductores'])) {
-    $items = [];
-    foreach ($resultados['conductores'] as $r) {
-        $sub = [];
-        if ($r['licencia_numero']) $sub[] = 'Lic. ' . $r['licencia_numero'] . ($r['licencia_tipo'] ? ' (' . $r['licencia_tipo'] . ')' : '');
-        if ($r['telefono'])        $sub[] = $r['telefono'];
-        $items[] = [
-            'tipo'        => 'conductor',
-            'titulo'      => $r['nombre_completo'],
-            'subtitulo'   => $sub ? implode(' · ', $sub) : 'Conductor',
-            'badge'       => (int) $r['activo'] === 0 ? 'INACTIVO' : null,
-            'badge_color' => '#71717a',
-            'url'         => url_relativa('flotilla_conductores.php'),
-            'icono'       => 'user-check',
-        ];
-    }
-    $grupos[] = ['nombre' => 'Conductores', 'icono' => 'user-check', 'items' => $items];
 }
 
 if (!empty($resultados['proveedores'])) {

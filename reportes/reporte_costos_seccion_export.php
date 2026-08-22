@@ -4,7 +4,7 @@
  * reportes/reporte_costos_seccion_export.php
  * Exporta UNA sección del reporte de costos a Excel, con los filtros actuales
  * (período + sucursal), en formato listo para imprimir (ajustado a una hoja).
- *   ?seccion=resumen|tendencia|incidencias|proveedores|flotilla|adquisiciones|sucursales
+ *   ?seccion=resumen|tendencia|incidencias|proveedores|adquisiciones|sucursales
  *   &periodo=...&desde=...&hasta=...&sucursal=...&agrupar=...
  * ============================================================================
  */
@@ -13,7 +13,6 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
-require_once __DIR__ . '/../config/flotilla_helpers.php';
 require_once __DIR__ . '/../config/xlsx_writer.php';
 
 requerir_login();
@@ -32,7 +31,6 @@ $secciones = [
     'tendencia'     => 'Tendencia de costos',
     'incidencias'   => 'Incidencias más caras',
     'proveedores'   => 'Proveedores más caros',
-    'flotilla'      => 'Proveedores de flotilla',
     'adquisiciones' => 'Adquisiciones del mes',
     'sucursales'    => 'Costos por sucursal',
 ];
@@ -77,8 +75,6 @@ case 'resumen':
     $adq_equipos = adquisiciones_equipos($desde, $hasta, (int) $sucursal_filtro, 100000);
     $adq_total   = (float) $adq_refacc['total'] + (float) $adq_equipos['total'];
     $gran_total  = (float) $resumen['total'] + $adq_total;
-    $flota_prov  = function_exists('flotilla_gasto_proveedores') ? flotilla_gasto_proveedores($desde, $hasta, '', 500) : [];
-    $flota_total = 0.0; foreach ($flota_prov as $fp) { $flota_total += (float) $fp['total']; }
 
     $xlsx->addHeaderRow(['Indicador', 'Valor'], true);
     $xlsx->addRow(['Costo de incidencias (interno + proveedores)', $m($resumen['total'])]);
@@ -89,7 +85,6 @@ case 'resumen':
     $xlsx->addRow(['Adquisiciones · refacciones compradas (incl. requisiciones)', $m($adq_refacc['total'])]);
     $xlsx->addRow(['Adquisiciones · equipos comprados', $m($adq_equipos['total'])]);
     $xlsx->addRow(['TOTAL DEL MES (incidencias + adquisiciones)', $m($gran_total)]);
-    $xlsx->addRow(['Gasto flotilla (por separado, NO incluido en el total)', $m($flota_total)]);
     $xlsx->addRow(['Incidencias en el período', (int) $resumen['num_total']]);
     $xlsx->addRow(['  Internas', (int) $resumen['num_total'] - (int) $resumen['con_proveedor']]);
     $xlsx->addRow(['  Externas (con proveedor)', (int) $resumen['con_proveedor']]);
@@ -158,20 +153,6 @@ case 'proveedores':
         ]);
     }
     $xlsx->addRow(['TOTAL', '', '', '', '', $m($t)]);
-    break;
-
-case 'flotilla':
-    $flota = function_exists('flotilla_gasto_proveedores') ? flotilla_gasto_proveedores($desde, $hasta, '', 500) : [];
-    $xlsx->addHeaderRow(['Proveedor / Taller', 'Servicios', 'Vehículos', 'Promedio', 'Total'], true);
-    $t = 0.0;
-    foreach ($flota as $pf) {
-        $reg = (int) $pf['registros']; $t += (float) $pf['total'];
-        $xlsx->addRow([
-            $pf['proveedor'], $reg, (int) $pf['vehiculos'],
-            $m($reg > 0 ? (float) $pf['total'] / $reg : 0), $m($pf['total']),
-        ]);
-    }
-    $xlsx->addRow(['TOTAL FLOTILLA', '', '', '', $m($t)]);
     break;
 
 case 'adquisiciones':

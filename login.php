@@ -176,7 +176,7 @@ if (es_post()) {
                         <span class="text-gold-400">S</span>istema <span class="text-gold-400">I</span>ntegral de <span class="text-gold-400">G</span>estión de <span class="text-gold-400">M</span>antenimiento y <span class="text-gold-400">A</span>ctivos.
                     </p>
                     <p class="text-white/65 text-sm leading-relaxed">
-                        Incidencias, equipos, refacciones, herramientas, medidores y flotilla — todo con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
+                        Incidencias, equipos, refacciones, herramientas y medidores — todo con seguimiento detallado, reincidencias automáticas y reportes por sucursal.
                     </p>
                     <div class="flex flex-wrap gap-2 justify-center pt-1">
                         <?php foreach (['Incidencias', 'Equipos', 'Refacciones', 'Herramientas', 'Medidores', 'Flotilla'] as $chip): ?>

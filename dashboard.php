@@ -107,8 +107,7 @@ $costos_mes = costos_resumen_periodo(
     $where_sucursal, $params_sucursal
 );
 
-// Adquisiciones del mes (compras de refacciones + equipos). La flotilla NO se incluye
-// aquí: se reporta por separado en su propio módulo.
+// Adquisiciones del mes (compras de refacciones + equipos).
 require_once __DIR__ . '/config/reportes_helpers.php';
 $adq_refacc_mes  = adquisiciones_refacciones(date('Y-m-01'), date('Y-m-d'), (int) ($sucursal_filtro ?? 0), 1);
 $adq_equipos_mes = adquisiciones_equipos(date('Y-m-01'), date('Y-m-d'), (int) ($sucursal_filtro ?? 0), 1);
@@ -334,95 +333,6 @@ if ($sin_actualizar > 0) {
         'titulo' => "$sin_actualizar incidencia(s) sin movimiento",
         'mensaje' => 'Llevan más de 7 días sin actualización.',
         'enlace' => url('bitacora.php?sin_actualizar=1')];
-}
-
-// ── Alertas de Flotilla ────────────────────────────────────────────────────
-$flotilla_docs_vencidos = (int)(db_one(
-    "SELECT COUNT(*) c FROM flotilla_documentos d
-     LEFT JOIN flotilla_vehiculos v ON d.vehiculo_id = v.id
-     WHERE d.estado = 'vencido'"
-    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
-)['c'] ?? 0);
-if ($flotilla_docs_vencidos > 0) {
-    $alertas[] = ['tipo' => 'critica', 'icono' => 'file-x',
-        'titulo' => "{$flotilla_docs_vencidos} documento(s) de flotilla vencido(s)",
-        'mensaje' => 'Seguros, tenencias o permisos que requieren renovación.',
-        'enlace' => url('flotilla_documentos.php?estado=vencido')];
-}
-
-$flotilla_docs_por_vencer = (int)(db_one(
-    "SELECT COUNT(*) c FROM flotilla_documentos d
-     LEFT JOIN flotilla_vehiculos v ON d.vehiculo_id = v.id
-     WHERE d.estado = 'por_vencer'"
-    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
-)['c'] ?? 0);
-if ($flotilla_docs_por_vencer > 0) {
-    $alertas[] = ['tipo' => 'warning', 'icono' => 'file-clock',
-        'titulo' => "{$flotilla_docs_por_vencer} documento(s) de flotilla por vencer",
-        'mensaje' => 'Próximos a vencer según días de alerta configurados.',
-        'enlace' => url('flotilla_documentos.php?estado=por_vencer')];
-}
-
-$flotilla_multas = db_one(
-    "SELECT COUNT(*) c, COALESCE(SUM(m.monto_original),0) monto
-     FROM flotilla_multas m
-     LEFT JOIN flotilla_vehiculos v ON m.vehiculo_id = v.id
-     WHERE m.estado IN('pendiente','impugnada')"
-    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
-) ?? [];
-if (($flotilla_multas['c'] ?? 0) > 0) {
-    $monto_multas = number_format((float)($flotilla_multas['monto'] ?? 0), 2);
-    $alertas[] = ['tipo' => 'warning', 'icono' => 'ticket-x',
-        'titulo' => "{$flotilla_multas['c']} multa(s) pendiente(s) · \${$monto_multas}",
-        'mensaje' => 'Infracciones sin pagar o en proceso de impugnación.',
-        'enlace' => url('flotilla_multas.php')];
-}
-
-$flotilla_mant_vencidos = (int)(db_one(
-    "SELECT COUNT(*) c FROM flotilla_mant_historial h
-     LEFT JOIN flotilla_vehiculos v ON h.vehiculo_id = v.id
-     WHERE h.proxima_fecha IS NOT NULL AND h.proxima_fecha < CURDATE()"
-    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
-)['c'] ?? 0);
-if ($flotilla_mant_vencidos > 0) {
-    $alertas[] = ['tipo' => 'warning', 'icono' => 'wrench',
-        'titulo' => "{$flotilla_mant_vencidos} mantenimiento(s) de vehículo vencido(s)",
-        'mensaje' => 'Servicios que ya pasaron su fecha programada.',
-        'enlace' => url('flotilla_mantenimiento.php?vista=pendientes')];
-}
-
-$flotilla_siniestros = (int)(db_one(
-    "SELECT COUNT(*) c FROM flotilla_siniestros s
-     LEFT JOIN flotilla_vehiculos v ON s.vehiculo_id = v.id
-     WHERE s.estado IN('reportado','en_proceso')"
-    . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '')
-)['c'] ?? 0);
-if ($flotilla_siniestros > 0) {
-    $alertas[] = ['tipo' => 'critica', 'icono' => 'shield-alert',
-        'titulo' => "{$flotilla_siniestros} siniestro(s) activo(s) en flotilla",
-        'mensaje' => 'Accidentes o siniestros reportados sin cerrar.',
-        'enlace' => url('flotilla_siniestros.php')];
-}
-
-// Odómetro desactualizado (umbral configurable por admin)
-require_once __DIR__ . '/config/flotilla_helpers.php';
-$odo_umbral_dash = flotilla_odometro_umbral();
-if (db_one("SHOW TABLES LIKE 'flotilla_odometro_historial'")) {
-    $odo_vencidos = (int)(db_one(
-        "SELECT COUNT(*) c FROM flotilla_vehiculos v
-         WHERE v.activo = 1 AND v.estado <> 'baja'"
-        . ($sucursal_filtro ? " AND v.sucursal_id = {$sucursal_filtro}" : '') . "
-           AND COALESCE(GREATEST(
-                 COALESCE((SELECT MAX(leido_en) FROM flotilla_odometro_historial WHERE vehiculo_id = v.id), '1970-01-01'),
-                 COALESCE((SELECT MAX(fecha)    FROM flotilla_combustible        WHERE vehiculo_id = v.id AND km_odometro > 0), '1970-01-01')
-               ), '1970-01-01') < DATE_SUB(NOW(), INTERVAL {$odo_umbral_dash} DAY)"
-    )['c'] ?? 0);
-    if ($odo_vencidos > 0) {
-        $alertas[] = ['tipo' => 'warning', 'icono' => 'gauge',
-            'titulo' => "{$odo_vencidos} vehículo(s) con odómetro sin actualizar",
-            'mensaje' => "Sin lectura de odómetro en más de {$odo_umbral_dash} días.",
-            'enlace' => url('flotilla_vehiculos.php')];
-    }
 }
 
 $h = (int) date('G');

@@ -18,7 +18,6 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
-require_once __DIR__ . '/../config/flotilla_helpers.php';
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
@@ -38,13 +37,6 @@ $ranking_inc = costos_ranking_incidencias($periodo['desde'], $periodo['hasta'], 
 $ranking_prov= costos_ranking_proveedores($periodo['desde'], $periodo['hasta'], 20, $where_sucursal, $params_sucursal);
 $tendencia   = costos_tendencia($periodo['desde'], $periodo['hasta'], $agrupar, $where_sucursal, $params_sucursal);
 
-// Gasto de flotilla (mantenimiento de vehículos) por proveedor — sección separada,
-// no se mezcla con el ranking de incidencias porque son gastos distintos.
-$prov_flota = function_exists('flotilla_gasto_proveedores')
-    ? flotilla_gasto_proveedores($periodo['desde'], $periodo['hasta'], '', 20)
-    : [];
-$flota_total = 0.0;
-foreach ($prov_flota as $fp) { $flota_total += (float) $fp['total']; }
 $por_sucursal= $sucursal_filtro ? [] : costos_por_sucursal($periodo['desde'], $periodo['hasta']);
 
 // Adquisiciones de mantenimiento del período (compras) — bloque nuevo del total.
@@ -53,7 +45,6 @@ $adq_refacc  = adquisiciones_refacciones($periodo['desde'], $periodo['hasta'], (
 $adq_equipos = adquisiciones_equipos($periodo['desde'], $periodo['hasta'], (int) $sucursal_filtro, 15);
 $adq_total   = (float) $adq_refacc['total'] + (float) $adq_equipos['total'];
 // Total del período: incidencias (consumo interno + proveedores) + adquisiciones (compras).
-// La flotilla NO se incluye: se reporta por separado (tiene su propia sección/página).
 $gran_total  = (float) $resumen['total'] + $adq_total;
 
 // Etiqueta de sucursal y datos para encabezados / exportación (impresión y PDF).
@@ -76,7 +67,7 @@ $dur_dias     = (int) (new DateTime($periodo['hasta']))->diff(new DateTime($peri
 $prev_desde   = date('Y-m-d', strtotime($prev_hasta . ' -' . $dur_dias . ' days'));
 $resumen_prev = costos_resumen_periodo($prev_desde, $prev_hasta, $where_sucursal, $params_sucursal);
 
-// Componentes del período anterior para comparar el TOTAL del mes (sin flotilla).
+// Componentes del período anterior para comparar el TOTAL del mes.
 $adq_refacc_prev  = adquisiciones_refacciones($prev_desde, $prev_hasta, (int) $sucursal_filtro, 1);
 $adq_equipos_prev = adquisiciones_equipos($prev_desde, $prev_hasta, (int) $sucursal_filtro, 1);
 $adq_total_prev   = (float) $adq_refacc_prev['total'] + (float) $adq_equipos_prev['total'];
@@ -120,7 +111,6 @@ if ($es_exportacion) {
     csv_fila(['Adquisiciones · compras de refacciones (incl. requisiciones)', number_format((float) $adq_refacc['total'], 2, '.', '')]);
     csv_fila(['Adquisiciones · equipos comprados', number_format((float) $adq_equipos['total'], 2, '.', '')]);
     csv_fila(['TOTAL DEL MES (incidencias + adquisiciones)', number_format($gran_total, 2, '.', '')]);
-    csv_fila(['Gasto flotilla (por separado, NO incluido en el total)', number_format($flota_total, 2, '.', '')]);
     csv_fila(['Incidencias en el período', $resumen['num_total']]);
     csv_fila(['  Internas', $resumen['num_total'] - $resumen['con_proveedor']]);
     csv_fila(['  Externas (con proveedor)', $resumen['con_proveedor']]);
@@ -152,20 +142,6 @@ if ($es_exportacion) {
             number_format((float) $p['materiales'], 2, '.', ''),
             number_format((float) $p['total'], 2, '.', ''),
         ]);
-    }
-
-    if (!empty($prov_flota)) {
-        csv_fila(['']);
-        csv_fila(['PROVEEDORES DE FLOTILLA (MANTENIMIENTO DE VEHÍCULOS)']);
-        csv_fila(['Proveedor / Taller', 'Servicios', 'Vehículos', 'Promedio', 'Total']);
-        foreach ($prov_flota as $pf) {
-            $reg = (int) $pf['registros'];
-            csv_fila([
-                $pf['proveedor'], $reg, (int) $pf['vehiculos'],
-                number_format($reg > 0 ? (float) $pf['total'] / $reg : 0, 2, '.', ''),
-                number_format((float) $pf['total'], 2, '.', ''),
-            ]);
-        }
     }
 
     if (!empty($por_sucursal)) {
@@ -243,7 +219,6 @@ if ($es_xlsx) {
     $xlsx->addRow(['Adquisiciones · compras de refacciones (incl. requisiciones)', $mny($adq_refacc['total'])]);
     $xlsx->addRow(['Adquisiciones · equipos comprados', $mny($adq_equipos['total'])]);
     $xlsx->addRow(['TOTAL DEL MES (incidencias + adquisiciones)', $mny($gran_total)]);
-    $xlsx->addRow(['Gasto flotilla (por separado, NO incluido en el total)', $mny($flota_total)]);
     $xlsx->addBlankRow();
     $xlsx->addHeaderRow(['COMPARATIVA VS PERIODO ANTERIOR (' . $prev_desde . ' a ' . $prev_hasta . ')'], true);
     $xlsx->addHeaderRow(['Indicador', 'Actual', 'Anterior', 'Variación %'], true);
@@ -299,25 +274,6 @@ if ($es_xlsx) {
             $p['nombre'], $p['servicio'] ?? '', (int) $p['num_incidencias'],
             $mny($p['mano_obra']), $mny($p['materiales']), $mny($p['total']),
         ]);
-    }
-
-    // Hoja 4: Flotilla
-    if (!empty($prov_flota)) {
-        $xlsx->addSheet('Flotilla');
-        $xlsx->addHeaderRow(['PROVEEDORES DE FLOTILLA (MANTENIMIENTO DE VEHÍCULOS)'], true);
-        $xlsx->addRow([$periodo_label]);
-        $xlsx->addBlankRow();
-        $xlsx->addHeaderRow(['Proveedor / Taller', 'Servicios', 'Vehículos', 'Promedio', 'Total'], true);
-        foreach ($prov_flota as $pf) {
-            $reg = (int) $pf['registros'];
-            $xlsx->addRow([
-                $pf['proveedor'], $reg, (int) $pf['vehiculos'],
-                $mny($reg > 0 ? (float) $pf['total'] / $reg : 0),
-                $mny($pf['total']),
-            ]);
-        }
-        $xlsx->addBlankRow();
-        $xlsx->addRow(['', '', '', 'TOTAL', $mny($flota_total)]);
     }
 
     // Hoja 5: Por sucursal
@@ -574,7 +530,7 @@ require_once __DIR__ . '/../config/header.php';
             <span class="font-bold text-sm text-zinc-900 uppercase tracking-wide">Total del mes</span>
             <span class="font-display text-xl font-extrabold text-bacal-700"><?= e(fmt_dinero($gran_total)) ?></span>
         </div>
-        <p class="text-[11px] text-zinc-500 mt-2">Suma consumo en órdenes + compras de refacciones (incluye requisiciones recibidas) + equipos. La flotilla se reporta por separado. Una refacción comprada y usada el mismo mes puede aparecer en dos rubros.</p>
+        <p class="text-[11px] text-zinc-500 mt-2">Suma consumo en órdenes + compras de refacciones (incluye requisiciones recibidas) + equipos. Una refacción comprada y usada el mismo mes puede aparecer en dos rubros.</p>
     </div>
 
     <!-- Tendencia + Desglose -->
@@ -720,56 +676,6 @@ require_once __DIR__ . '/../config/header.php';
                         <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $ranking_prov)))) ?></td>
                         <td class="px-4 py-2.5 text-right text-xs font-bold text-zinc-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['materiales'], $ranking_prov)))) ?></td>
                         <td class="px-4 py-2.5 text-right text-sm font-extrabold text-bacal-700"><?= e(fmt_dinero(array_sum(array_map(fn($x) => (float) $x['total'], $ranking_prov)))) ?></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- Proveedores de flotilla (mantenimiento de vehículos) -->
-    <div class="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-zinc-100 flex items-center gap-2">
-            <i data-lucide="truck" class="w-5 h-5 text-blue-600"></i>
-            <h3 class="font-display text-base font-bold text-zinc-900">Proveedores de flotilla más caros</h3>
-            <span class="text-xs text-zinc-500">(<?= count($prov_flota) ?>)</span>
-            <span class="ml-auto text-[11px] text-zinc-400">Mantenimiento de vehículos · gasto independiente de incidencias</span>
-            <?= $btn_export_sec('flotilla', false) ?>
-        </div>
-        <?php if (empty($prov_flota)): ?>
-        <div class="px-5 py-10 text-center text-sm text-zinc-400">Sin gastos de mantenimiento de flotilla en el período.</div>
-        <?php else: ?>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead class="bg-zinc-50 border-b border-zinc-200">
-                    <tr>
-                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
-                        <th class="px-4 py-2.5 text-left text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Proveedor / Taller</th>
-                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Servicios</th>
-                        <th class="px-4 py-2.5 text-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Vehículos</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Promedio</th>
-                        <th class="px-4 py-2.5 text-right text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-100">
-                    <?php foreach ($prov_flota as $idx => $pf):
-                        $reg = (int) $pf['registros'];
-                        $prom = $reg > 0 ? (float) $pf['total'] / $reg : 0;
-                    ?>
-                    <tr class="hover:bg-zinc-50">
-                        <td class="px-4 py-2.5 text-zinc-400 font-mono text-xs"><?= $idx + 1 ?></td>
-                        <td class="px-4 py-2.5 font-semibold text-sm text-zinc-900"><?= e($pf['proveedor']) ?></td>
-                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= $reg ?></td>
-                        <td class="px-4 py-2.5 text-center text-sm text-zinc-700"><?= (int) $pf['vehiculos'] ?></td>
-                        <td class="px-4 py-2.5 text-right text-xs text-zinc-600"><?= e(fmt_dinero($prom)) ?></td>
-                        <td class="px-4 py-2.5 text-right font-bold text-sm text-blue-700"><?= e(fmt_dinero((float) $pf['total'])) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-                <tfoot class="bg-zinc-50 border-t border-zinc-200">
-                    <tr>
-                        <td colspan="5" class="px-4 py-2.5 text-right text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Total flotilla</td>
-                        <td class="px-4 py-2.5 text-right font-bold text-sm text-blue-700"><?= e(fmt_dinero((float) $flota_total)) ?></td>
                     </tr>
                 </tfoot>
             </table>
