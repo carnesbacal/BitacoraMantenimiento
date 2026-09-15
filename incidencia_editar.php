@@ -54,6 +54,14 @@ if (!empty($incidencia['proveedor_escalado_id'])) {
     $modo_inicial = 'otro';
 }
 
+// Deducir cómo se repartió el costo de materiales del trabajo externo.
+// Si NO hubo proveedor, costo_materiales_comprados pertenece al bloque interno
+// y no forma parte del reparto.
+[$mat_origen_ini, $mat_total_ini, $mat_pct_ini] = derivar_origen_materiales(
+    $incidencia['costo_materiales_proveedor'] ?? null,
+    $modo_inicial !== 'interno' ? ($incidencia['costo_materiales_comprados'] ?? null) : null
+);
+
 $errores = [];
 $valores = [
     'titulo' => $incidencia['titulo'],
@@ -87,6 +95,10 @@ $valores = [
     'costo_notas' => $incidencia['costo_notas'] ?? '',
     'horas_trabajadas' => $incidencia['horas_trabajadas'] ?? '',
     'costo_materiales_comprados' => $incidencia['costo_materiales_comprados'] ?? '',
+    // Materiales del trabajo externo (campos auxiliares, no son columnas)
+    'costo_materiales_monto' => $mat_total_ini,
+    'materiales_origen' => $mat_origen_ini,
+    'materiales_pct_proveedor' => $mat_pct_ini,
 ];
 
 // En la carga inicial, mostrar el FOLIO de la incidencia original (más legible que el ID).
@@ -274,18 +286,40 @@ if (es_post()) {
                         $prov_info = trim((string) $valores['proveedor_externo_info']) ?: null;
                     }
                 }
+                // Reparto del costo de materiales cuando el trabajo fue externo:
+                // parte la pudo facturar el proveedor y parte comprarla la empresa.
+                [$mat_proveedor, $mat_interno] = repartir_materiales_externo(
+                    $modo !== 'interno',
+                    $valores['costo_materiales_monto'],
+                    (string) $valores['materiales_origen'],
+                    $valores['materiales_pct_proveedor']
+                );
+                // Reflejar el reparto en $valores para que el historial registre
+                // las columnas reales y no los campos auxiliares del formulario.
+                $valores['costo_materiales_proveedor'] = $mat_proveedor ?? '';
+                if ($modo !== 'interno') {
+                    $valores['costo_materiales_comprados'] = $mat_interno ?? '';
+                }
+
                 guardar_costos_incidencia($id, [
                     'proveedor_escalado_id' => $prov_id,
                     'proveedor_externo_info' => $prov_info,
                     'costo_mano_obra' => $modo === 'interno' ? null : $valores['costo_mano_obra'],
-                    'costo_materiales_proveedor' => $modo === 'interno' ? null : $valores['costo_materiales_proveedor'],
+                    'costo_materiales_proveedor' => $mat_proveedor,
                     'costo_notas' => $valores['costo_notas'],
                     'horas_trabajadas' => $modo === 'interno' ? $valores['horas_trabajadas'] : null,
-                    'costo_materiales_comprados' => $modo === 'interno' ? $valores['costo_materiales_comprados'] : null,
+                    'costo_materiales_comprados' => $modo === 'interno'
+                        ? $valores['costo_materiales_comprados']
+                        : $mat_interno,
                 ]);
                 $despues = [];
                 foreach ($valores as $k => $v) {
                     $despues[$k] = (string) ($v ?? '');
+                }
+                // Campos auxiliares del formulario: no son columnas de la tabla,
+                // así que no deben aparecer como cambios en el historial.
+                foreach (['costo_materiales_monto', 'materiales_origen', 'materiales_pct_proveedor'] as $__aux) {
+                    unset($antes[$__aux], $despues[$__aux]);
                 }
                 registrar_diferencias($id, $u['id'], $antes, $despues);
 
@@ -538,7 +572,15 @@ require_once __DIR__ . '/config/header.php';
         <div class="bg-white rounded-xl border border-zinc-200 shadow-sm p-6"
              x-data="{
                  modo: '<?= e((string) $valores['proveedor_modo']) ?>',
-                 get esExterno() { return this.modo === 'catalogo' || this.modo === 'otro'; }
+                 matOrigen: '<?= e((string) $valores['materiales_origen']) ?>',
+                 matTotal: '<?= e((string) $valores['costo_materiales_monto']) ?>',
+                 matPct: <?= (float) $valores['materiales_pct_proveedor'] ?>,
+                 get esExterno() { return this.modo === 'catalogo' || this.modo === 'otro'; },
+                 get pctProv() { return Math.min(100, Math.max(0, Number(this.matPct) || 0)); },
+                 get pctInt() { return Math.round((100 - this.pctProv) * 100) / 100; },
+                 get montoProv() { return Math.round((Number(this.matTotal) || 0) * this.pctProv) / 100; },
+                 get montoInt() { return Math.round(((Number(this.matTotal) || 0) - this.montoProv) * 100) / 100; },
+                 money(n) { return '$' + (Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
              }">
             <h3 class="font-display text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
                 <i data-lucide="hand-coins" class="w-4 h-4 text-bacal-700"></i>
@@ -670,12 +712,79 @@ require_once __DIR__ . '/config/header.php';
                         <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Costo materiales / piezas</label>
                         <div class="relative">
                             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
-                            <input type="number" name="costo_materiales_proveedor" min="0" step="0.01"
-                                   value="<?= e((string) $valores['costo_materiales_proveedor']) ?>"
+                            <input type="number" name="costo_materiales_monto" min="0" step="0.01"
+                                   x-model="matTotal"
+                                   value="<?= e((string) $valores['costo_materiales_monto']) ?>"
                                    placeholder="0.00"
                                    class="w-full pl-7 pr-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
                         </div>
+                        <p class="text-[10px] text-zinc-500 mt-1">Total de materiales y piezas, sin importar quién los pagó.</p>
                     </div>
+                </div>
+
+                <!-- ¿Quién compró los materiales? -->
+                <div class="mt-3 bg-zinc-50 rounded-lg p-3 border border-zinc-200" x-show="Number(matTotal) > 0" x-collapse>
+                    <p class="text-xs font-bold text-zinc-700 mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                        <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-bacal-700"></i>
+                        ¿Quién compró los materiales?
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-colors bg-white"
+                               :class="matOrigen === 'proveedor' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                            <input type="radio" name="materiales_origen" value="proveedor" x-model="matOrigen" class="text-bacal-700">
+                            <div>
+                                <div class="text-xs font-semibold text-zinc-900">El proveedor</div>
+                                <div class="text-[10px] text-zinc-500">Él los facturó</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-colors bg-white"
+                               :class="matOrigen === 'interno' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                            <input type="radio" name="materiales_origen" value="interno" x-model="matOrigen" class="text-bacal-700">
+                            <div>
+                                <div class="text-xs font-semibold text-zinc-900">Nosotros</div>
+                                <div class="text-[10px] text-zinc-500">Compra interna</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-colors bg-white"
+                               :class="matOrigen === 'mixto' ? 'border-bacal-700 bg-bacal-50' : 'border-zinc-200 hover:border-zinc-300'">
+                            <input type="radio" name="materiales_origen" value="mixto" x-model="matOrigen"
+                                   @change="if (pctProv >= 100 || pctProv <= 0) matPct = 50" class="text-bacal-700">
+                            <div>
+                                <div class="text-xs font-semibold text-zinc-900">Mixto</div>
+                                <div class="text-[10px] text-zinc-500">Repartir por %</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Reparto por porcentaje -->
+                    <div x-show="matOrigen === 'mixto'" x-collapse class="mt-3 pt-3 border-t border-zinc-200">
+                        <div class="flex items-center gap-3">
+                            <div class="shrink-0">
+                                <label class="block text-[10px] font-bold text-zinc-600 mb-1 uppercase tracking-wide">% Proveedor</label>
+                                <input type="number" name="materiales_pct_proveedor" min="0" max="100" step="1"
+                                       x-model.number="matPct"
+                                       class="w-20 px-2 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:border-bacal-700">
+                            </div>
+                            <input type="range" min="0" max="100" step="1" x-model.number="matPct"
+                                   class="flex-1 mt-4 accent-bacal-700 cursor-pointer">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-3">
+                            <div class="bg-white rounded-lg border border-zinc-200 p-2">
+                                <div class="text-[10px] text-zinc-500 uppercase tracking-wide">Proveedor · externo</div>
+                                <div class="text-sm font-bold text-zinc-900" x-text="money(montoProv)"></div>
+                                <div class="text-[10px] text-zinc-400" x-text="pctProv + '%'"></div>
+                            </div>
+                            <div class="bg-white rounded-lg border border-zinc-200 p-2">
+                                <div class="text-[10px] text-zinc-500 uppercase tracking-wide">Nosotros · interno</div>
+                                <div class="text-sm font-bold text-zinc-900" x-text="money(montoInt)"></div>
+                                <div class="text-[10px] text-zinc-400" x-text="pctInt + '%'"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-[10px] text-zinc-500 mt-2" x-show="matOrigen !== 'proveedor'" x-collapse>
+                        Lo que compramos nosotros se contabiliza como gasto <strong>interno</strong>: al proveedor solo se le atribuye lo que él facturó.
+                    </p>
                 </div>
                 <div class="mt-3">
                     <label class="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wide">Notas del costo</label>

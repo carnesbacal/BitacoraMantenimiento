@@ -534,11 +534,6 @@
     "ast_hash": "14756dc61af70e41ffc864e072f6312b",
     "semantic_hash": "14756dc61af70e41ffc864e072f6312b"
   },
-  "root/carnes_bacal.sql": {
-    "mtime": 1779310065.5315099,
-    "ast_hash": "b5f709e7d37b227f04b3ab1b5e5563d5",
-    "semantic_hash": "b5f709e7d37b227f04b3ab1b5e5563d5"
-  },
   "root/generar_datos_demo.php": {
     "mtime": 1779315106.0,
     "ast_hash": "329d1d81734b56a84cd0fe9aa8911a13",
@@ -548,46 +543,6 @@
     "mtime": 1779310468.7401226,
     "ast_hash": "e094211f22a9bcf263f03a7f459a4882",
     "semantic_hash": "e094211f22a9bcf263f03a7f459a4882"
-  },
-  "sql/mantenimiento_bacal_B1.sql": {
-    "mtime": 1780009878.3279994,
-    "ast_hash": "8809a972e0b59d8429b11d970ae428bd",
-    "semantic_hash": "8809a972e0b59d8429b11d970ae428bd"
-  },
-  "sql/mantenimiento_bacal_B2.sql": {
-    "mtime": 1780010140.6880572,
-    "ast_hash": "ea5a02ec801c5f5f810402fc7c07e455",
-    "semantic_hash": "ea5a02ec801c5f5f810402fc7c07e455"
-  },
-  "sql/mantenimiento_bacal_B3.sql": {
-    "mtime": 1780036626.0,
-    "ast_hash": "4ccf1591db9150e54ac092fc5b088dcb",
-    "semantic_hash": "4ccf1591db9150e54ac092fc5b088dcb"
-  },
-  "sql/mantenimiento_bacal_B4.sql": {
-    "mtime": 1780028652.442649,
-    "ast_hash": "4cd2d04e110e0bac242f8a02821e011e",
-    "semantic_hash": "4cd2d04e110e0bac242f8a02821e011e"
-  },
-  "sql/mantenimiento_bacal_B5.sql": {
-    "mtime": 1780030640.092493,
-    "ast_hash": "9130ca0aa9d12c30be42a62a08757497",
-    "semantic_hash": "9130ca0aa9d12c30be42a62a08757497"
-  },
-  "sql/migracion_areas.sql": {
-    "mtime": 1780545560.9831216,
-    "ast_hash": "f76e858d968c009142dde435fb49bfbb",
-    "semantic_hash": "f76e858d968c009142dde435fb49bfbb"
-  },
-  "sql/migracion_bacal.sql": {
-    "mtime": 1780544467.7419865,
-    "ast_hash": "a265c7856254ada5bcbaec857c8d16a3",
-    "semantic_hash": "a265c7856254ada5bcbaec857c8d16a3"
-  },
-  "sql/migracion_equipos_area.sql": {
-    "mtime": 1780546010.401826,
-    "ast_hash": "a89cd7abf7f7536b9fc7a052890247aa",
-    "semantic_hash": "a89cd7abf7f7536b9fc7a052890247aa"
   },
   "vault.php": {
     "mtime": 1779827847.063741,
@@ -623,5 +578,830 @@
     "mtime": 1780863947.3670382,
     "ast_hash": "30bfa7597666085331dd58749bbb4f92",
     "semantic_hash": "30bfa7597666085331dd58749bbb4f92"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\anuncios.php": {
+    "mtime": 1782319601.4984963,
+    "ast_hash": "3d02108b23c025246c711447768d4633",
+    "semantic_hash": "3d02108b23c025246c711447768d4633"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\archivar.php": {
+    "mtime": 1786386024.4080887,
+    "ast_hash": "490e4ffdeefe77243aafa046a68f130d",
+    "semantic_hash": "490e4ffdeefe77243aafa046a68f130d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\areas.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "e61965db12b7e00aeef134b7f5e03bcf",
+    "semantic_hash": "e61965db12b7e00aeef134b7f5e03bcf"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\auditoria.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "c7f2bbec1df2187b3048f9267d6a9cd2",
+    "semantic_hash": "c7f2bbec1df2187b3048f9267d6a9cd2"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\backups.php": {
+    "mtime": 1786386024.418089,
+    "ast_hash": "ea5e07d93074772eb532dcce592044c2",
+    "semantic_hash": "ea5e07d93074772eb532dcce592044c2"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\catalogos.php": {
+    "mtime": 1787430628.0952594,
+    "ast_hash": "c137842dcd435591f462f8fcdf89de20",
+    "semantic_hash": "c137842dcd435591f462f8fcdf89de20"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\equipos.php": {
+    "mtime": 1786390170.9288297,
+    "ast_hash": "69c4a2fa9938d7b0083167e897602b8a",
+    "semantic_hash": "69c4a2fa9938d7b0083167e897602b8a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\importar.php": {
+    "mtime": 1782339340.7353034,
+    "ast_hash": "efebb12652c2c831a7bb08ad15452c1e",
+    "semantic_hash": "efebb12652c2c831a7bb08ad15452c1e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\importar_descargar_ejemplo.php": {
+    "mtime": 1779898023.9671988,
+    "ast_hash": "c4b565fbacc0bc108f7d027c78a3fb86",
+    "semantic_hash": "c4b565fbacc0bc108f7d027c78a3fb86"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\importar_historial.php": {
+    "mtime": 1779696472.0,
+    "ast_hash": "7237f2c87bb262cd5c2b6c54bf0a5f91",
+    "semantic_hash": "7237f2c87bb262cd5c2b6c54bf0a5f91"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\notificaciones_config.php": {
+    "mtime": 1781713103.017668,
+    "ast_hash": "a78b275aebdb03ee644890bded5a7717",
+    "semantic_hash": "a78b275aebdb03ee644890bded5a7717"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\plantillas.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "70e320a71cf1c31277e946df299058ed",
+    "semantic_hash": "70e320a71cf1c31277e946df299058ed"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\reglas_asignacion.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "f875e79375f93da11171de9e792d93d3",
+    "semantic_hash": "f875e79375f93da11171de9e792d93d3"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\sucursales.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "7d7a180f0fc9b2b4ebf1c724f1d045ee",
+    "semantic_hash": "7d7a180f0fc9b2b4ebf1c724f1d045ee"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\admin\\usuarios.php": {
+    "mtime": 1780533246.420659,
+    "ast_hash": "82e648d99c2f5617de5d5d6ca2e1c8ac",
+    "semantic_hash": "82e648d99c2f5617de5d5d6ca2e1c8ac"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\almacen.php": {
+    "mtime": 1781571289.1470702,
+    "ast_hash": "4f1d2e29900204bb1312cb179c61777c",
+    "semantic_hash": "4f1d2e29900204bb1312cb179c61777c"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\anuncio_cerrar.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "f16deab8b37cb875b3c8f34d27c14e68",
+    "semantic_hash": "f16deab8b37cb875b3c8f34d27c14e68"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\avatar_subir.php": {
+    "mtime": 1779539224.0,
+    "ast_hash": "89e156be277438aaf62b0d99fc358388",
+    "semantic_hash": "89e156be277438aaf62b0d99fc358388"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\buscar_global.php": {
+    "mtime": 1787430611.2924185,
+    "ast_hash": "b0dec4f4a2b952070b18d3f84cad9bd9",
+    "semantic_hash": "b0dec4f4a2b952070b18d3f84cad9bd9"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\buscar_reincidencias.php": {
+    "mtime": 1779378245.230578,
+    "ast_hash": "2452eae0c3a4177c226b8d26a60670fc",
+    "semantic_hash": "2452eae0c3a4177c226b8d26a60670fc"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\cambiar_tema.php": {
+    "mtime": 1779697064.0,
+    "ast_hash": "7d38154c621eb047c4a76018a7ab6e88",
+    "semantic_hash": "7d38154c621eb047c4a76018a7ab6e88"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\catalogo_crear_rapido.php": {
+    "mtime": 1781575129.865384,
+    "ast_hash": "7ba8aa15e446728276f93cf1e54d74bb",
+    "semantic_hash": "7ba8aa15e446728276f93cf1e54d74bb"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\comentario_reaccionar.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "f00d761884326e3462d1dcdd35c7bbe3",
+    "semantic_hash": "f00d761884326e3462d1dcdd35c7bbe3"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipo_foto_eliminar.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "cba964be6795a2090efdd267d8aebd84",
+    "semantic_hash": "cba964be6795a2090efdd267d8aebd84"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipo_foto_portada.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "995aaef25e6e107ae002b3e9428b9736",
+    "semantic_hash": "995aaef25e6e107ae002b3e9428b9736"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipo_fotos_subir.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "a6725b80b8e2680fa78642a953b5e5f8",
+    "semantic_hash": "a6725b80b8e2680fa78642a953b5e5f8"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipo_posicion.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "6944b69fcd259527f3db0db2ace6406a",
+    "semantic_hash": "6944b69fcd259527f3db0db2ace6406a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipo_transferir.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "3814aaa64e9abc60da033ff0d5170c2b",
+    "semantic_hash": "3814aaa64e9abc60da033ff0d5170c2b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\equipos_de_sucursal.php": {
+    "mtime": 1779378245.215578,
+    "ast_hash": "ccef3bc933df1583e6df41eef98fd7b9",
+    "semantic_hash": "ccef3bc933df1583e6df41eef98fd7b9"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\incidencias_autocompletar.php": {
+    "mtime": 1783636583.347526,
+    "ast_hash": "67bcd70bc0a4b8af1a0ff1b21cccc0bc",
+    "semantic_hash": "67bcd70bc0a4b8af1a0ff1b21cccc0bc"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\mantenimiento_convertir_incidencia.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "b148cf10a0b1476dfdf479b521952681",
+    "semantic_hash": "b148cf10a0b1476dfdf479b521952681"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\notificacion_marcar_leida.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "e108c46c6148be6fda4cce71b7eb8bf4",
+    "semantic_hash": "e108c46c6148be6fda4cce71b7eb8bf4"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\notificaciones_no_leidas.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "dcf4e4976a5748e83a32c1550d779c05",
+    "semantic_hash": "dcf4e4976a5748e83a32c1550d779c05"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\plantilla_usada.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "5bf3b3ece9a01131e0c062a7807e4538",
+    "semantic_hash": "5bf3b3ece9a01131e0c062a7807e4538"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\plantillas_listar.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "5fa6c2e7cb00f90ea1ec92c384c27956",
+    "semantic_hash": "5fa6c2e7cb00f90ea1ec92c384c27956"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\preview_equipo.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "033ce0c920dbf289c0c0bc653f05ea34",
+    "semantic_hash": "033ce0c920dbf289c0c0bc653f05ea34"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\preview_folio.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "47ef9d66b0a66e02cda1714c00e42627",
+    "semantic_hash": "47ef9d66b0a66e02cda1714c00e42627"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\proveedores_listar.php": {
+    "mtime": 1779537736.0,
+    "ast_hash": "1ca6e1695729bfb62cbc3f76858ae179",
+    "semantic_hash": "1ca6e1695729bfb62cbc3f76858ae179"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\sparklines_dashboard.php": {
+    "mtime": 1779774252.0,
+    "ast_hash": "ad9c4cd7adc46cb6b112b583f4165940",
+    "semantic_hash": "ad9c4cd7adc46cb6b112b583f4165940"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\sucursal_plano_subir.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "ac1d4363d01943ee88ba73c60f4033a3",
+    "semantic_hash": "ac1d4363d01943ee88ba73c60f4033a3"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\sugerencias_incidencia.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "3bea1e004d0c6134cfe6e77b91ad457e",
+    "semantic_hash": "3bea1e004d0c6134cfe6e77b91ad457e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\sugerir_categoria.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "4051acf4ae3cd01b96cb6e20fa9e6230",
+    "semantic_hash": "4051acf4ae3cd01b96cb6e20fa9e6230"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\tecnico_menos_cargado.php": {
+    "mtime": 1781575837.4985862,
+    "ast_hash": "aac7cae1f8c8b9acfbce9a48f4be0a55",
+    "semantic_hash": "aac7cae1f8c8b9acfbce9a48f4be0a55"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\usuarios_buscar.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "b55f03300cc8a5f364072e5e790ce498",
+    "semantic_hash": "b55f03300cc8a5f364072e5e790ce498"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\api\\vault_favorito.php": {
+    "mtime": 1779922504.0,
+    "ast_hash": "643f01500eccebb7d32d6a8f0e6f5288",
+    "semantic_hash": "643f01500eccebb7d32d6a8f0e6f5288"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\js\\lucide.min.js": {
+    "mtime": 1782070359.7571993,
+    "ast_hash": "671e551977f91d1f10e988bb7023666f",
+    "semantic_hash": "671e551977f91d1f10e988bb7023666f"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\js\\qrcode.min.js": {
+    "mtime": 1786388364.2020051,
+    "ast_hash": "fbb6b69bce6abf116d6eb147ad5484a5",
+    "semantic_hash": "fbb6b69bce6abf116d6eb147ad5484a5"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\js\\tabla-orden.js": {
+    "mtime": 1782171089.1788018,
+    "ast_hash": "9d132973361b11205441c56d261eb2a3",
+    "semantic_hash": "9d132973361b11205441c56d261eb2a3"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\base_conocimiento.php": {
+    "mtime": 1780969062.4499693,
+    "ast_hash": "9c10ceb895b920a420254159562c343f",
+    "semantic_hash": "9c10ceb895b920a420254159562c343f"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\bitacora.php": {
+    "mtime": 1783555353.004773,
+    "ast_hash": "530613b2654d03097c8c286bf44dbc8e",
+    "semantic_hash": "530613b2654d03097c8c286bf44dbc8e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\admin_helpers.php": {
+    "mtime": 1779422342.0,
+    "ast_hash": "050d624fb328d820a21f3848cf786f13",
+    "semantic_hash": "050d624fb328d820a21f3848cf786f13"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\app.php": {
+    "mtime": 1787497779.7506216,
+    "ast_hash": "31f37a124e27da976350ac03b4b3cabb",
+    "semantic_hash": "31f37a124e27da976350ac03b4b3cabb"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\auth.php": {
+    "mtime": 1781827406.1685467,
+    "ast_hash": "4dd1a13933f8f66c248e4cc8bde231aa",
+    "semantic_hash": "4dd1a13933f8f66c248e4cc8bde231aa"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\backups_helpers.php": {
+    "mtime": 1780435150.063189,
+    "ast_hash": "eee2756efae89a20182973ddfa01fa86",
+    "semantic_hash": "eee2756efae89a20182973ddfa01fa86"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\componentes_helpers.php": {
+    "mtime": 1780012021.8111641,
+    "ast_hash": "cf2a6eed2f3f22fb70b5748ab2749a5d",
+    "semantic_hash": "cf2a6eed2f3f22fb70b5748ab2749a5d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\comunicacion_helpers.php": {
+    "mtime": 1779747846.0,
+    "ast_hash": "4cc165d17cd0fda651008399f0432116",
+    "semantic_hash": "4cc165d17cd0fda651008399f0432116"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\equipos_helpers.php": {
+    "mtime": 1779590458.0,
+    "ast_hash": "15e53573330bc0b988cdc6f5b72b04ee",
+    "semantic_hash": "15e53573330bc0b988cdc6f5b72b04ee"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\footer.php": {
+    "mtime": 1782261596.8553965,
+    "ast_hash": "c727b1f64ca12287c886c66537ddc1ef",
+    "semantic_hash": "c727b1f64ca12287c886c66537ddc1ef"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\header.php": {
+    "mtime": 1787430767.6909037,
+    "ast_hash": "3d18b3e199368be17e998daeffbf3614",
+    "semantic_hash": "3d18b3e199368be17e998daeffbf3614"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\helpers.php": {
+    "mtime": 1787430590.9313338,
+    "ast_hash": "f742bdedfa6daf6f074492858b13ba7a",
+    "semantic_hash": "f742bdedfa6daf6f074492858b13ba7a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\herramientas_helpers.php": {
+    "mtime": 1786383395.2464247,
+    "ast_hash": "b20098e77127ba647e23e52b57c0ca24",
+    "semantic_hash": "b20098e77127ba647e23e52b57c0ca24"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\herramientas_requisiciones_helpers.php": {
+    "mtime": 1786386812.907556,
+    "ast_hash": "b2e737628b8708820683e6f2e5405385",
+    "semantic_hash": "b2e737628b8708820683e6f2e5405385"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\importacion_helpers.php": {
+    "mtime": 1779696472.0,
+    "ast_hash": "9a4dbc957383f4920cf8e181e07654a7",
+    "semantic_hash": "9a4dbc957383f4920cf8e181e07654a7"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\incidencia_costos_helpers.php": {
+    "mtime": 1781801179.4215224,
+    "ast_hash": "d67528abe0b1321c592d755ee5205dfe",
+    "semantic_hash": "d67528abe0b1321c592d755ee5205dfe"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\incidencia_refacciones_helpers.php": {
+    "mtime": 1780028684.9391544,
+    "ast_hash": "a5aeaea41b547778a3ff8041d3a82630",
+    "semantic_hash": "a5aeaea41b547778a3ff8041d3a82630"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\incidencias_helpers.php": {
+    "mtime": 1782245570.4732754,
+    "ast_hash": "5b42a884b0e224c2931f7c82e111532a",
+    "semantic_hash": "5b42a884b0e224c2931f7c82e111532a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\inteligencia_helpers.php": {
+    "mtime": 1779678308.0,
+    "ast_hash": "72c2784dd74e89e455c0bb85ea83b08f",
+    "semantic_hash": "72c2784dd74e89e455c0bb85ea83b08f"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\mantenimientos_helpers.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "49b6e2d7caa1ef0ae4adf8bbfc468ebd",
+    "semantic_hash": "49b6e2d7caa1ef0ae4adf8bbfc468ebd"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\mapa_helpers.php": {
+    "mtime": 1779750840.0,
+    "ast_hash": "1aedea64d670402deb6d5f5cc02a06e4",
+    "semantic_hash": "1aedea64d670402deb6d5f5cc02a06e4"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\medidores_helpers.php": {
+    "mtime": 1780863935.11195,
+    "ast_hash": "75aad7bf8152209ca0d369f52b15d076",
+    "semantic_hash": "75aad7bf8152209ca0d369f52b15d076"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\monsat_correo.example.php": {
+    "mtime": 1783706705.857033,
+    "ast_hash": "f2feb68f66c35b3f6376f82aa37ba9ac",
+    "semantic_hash": "f2feb68f66c35b3f6376f82aa37ba9ac"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\notificaciones_canales.php": {
+    "mtime": 1781714730.820414,
+    "ast_hash": "e35940855532076282c9b8db367f7352",
+    "semantic_hash": "e35940855532076282c9b8db367f7352"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\notificaciones_helpers.php": {
+    "mtime": 1781711763.8795354,
+    "ast_hash": "e7031809a232b453f85a7cf366acce16",
+    "semantic_hash": "e7031809a232b453f85a7cf366acce16"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\organizacion_helpers.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "bbddba9eec249ec2664f3ba326b958a6",
+    "semantic_hash": "bbddba9eec249ec2664f3ba326b958a6"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\qr_helpers.php": {
+    "mtime": 1786388465.940271,
+    "ast_hash": "5ae8d1ec7703ce4c0d4ce0c6a1d0e27c",
+    "semantic_hash": "5ae8d1ec7703ce4c0d4ce0c6a1d0e27c"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\refacciones_helpers.php": {
+    "mtime": 1786383395.233369,
+    "ast_hash": "6f64fefbbbb4a8a559e21526c463235b",
+    "semantic_hash": "6f64fefbbbb4a8a559e21526c463235b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\reportes_export.php": {
+    "mtime": 1786386024.396082,
+    "ast_hash": "0fd6fe8616e60eae09886f97e2a273f5",
+    "semantic_hash": "0fd6fe8616e60eae09886f97e2a273f5"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\reportes_helpers.php": {
+    "mtime": 1785010265.069513,
+    "ast_hash": "d8d2d628d718c2b74d0c2047d222e979",
+    "semantic_hash": "d8d2d628d718c2b74d0c2047d222e979"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\requisiciones_helpers.php": {
+    "mtime": 1784579707.693377,
+    "ast_hash": "3fd6d1beb6eb5afc42a155b2abedb434",
+    "semantic_hash": "3fd6d1beb6eb5afc42a155b2abedb434"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\sesiones_helpers.php": {
+    "mtime": 1781819729.916062,
+    "ast_hash": "893f0aa50d0b8692f17c3b31ef2867d1",
+    "semantic_hash": "893f0aa50d0b8692f17c3b31ef2867d1"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\vault_helpers.php": {
+    "mtime": 1779827834.4125502,
+    "ast_hash": "d865998856d404f87f7697dbe2da4f33",
+    "semantic_hash": "d865998856d404f87f7697dbe2da4f33"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\config\\xlsx_writer.php": {
+    "mtime": 1786484702.1053667,
+    "ast_hash": "9b4f151c3017c6fffe24128b58b4eb43",
+    "semantic_hash": "9b4f151c3017c6fffe24128b58b4eb43"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\cron\\archivar_automatico.php": {
+    "mtime": 1779680170.0,
+    "ast_hash": "4bd5ddd2551755db292d3f6a835772d0",
+    "semantic_hash": "4bd5ddd2551755db292d3f6a835772d0"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\cron\\backup_diario.php": {
+    "mtime": 1786386024.4273562,
+    "ast_hash": "39c4d50ff052877ae7afc4cbda20589b",
+    "semantic_hash": "39c4d50ff052877ae7afc4cbda20589b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\cron\\enviar_recordatorios.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "3238d64fcf39db798d01d3495286e30d",
+    "semantic_hash": "3238d64fcf39db798d01d3495286e30d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\cron\\notificar_mantenimientos.php": {
+    "mtime": 1779749242.0,
+    "ast_hash": "6e97975e17252356bcdf10bdc4d1b65b",
+    "semantic_hash": "6e97975e17252356bcdf10bdc4d1b65b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\dashboard.php": {
+    "mtime": 1787430652.0850265,
+    "ast_hash": "49a96104bfcc8bebf5a47cd449166b06",
+    "semantic_hash": "49a96104bfcc8bebf5a47cd449166b06"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\diagnostico_logout.php": {
+    "mtime": 1779326894.8380148,
+    "ast_hash": "e6c997c62d157f1e46b031b37ddcdfa1",
+    "semantic_hash": "e6c997c62d157f1e46b031b37ddcdfa1"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\equipo_componentes.php": {
+    "mtime": 1787430767.7039032,
+    "ast_hash": "40e045f42ad21662b1826e3b577921f8",
+    "semantic_hash": "40e045f42ad21662b1826e3b577921f8"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\equipo_refacciones.php": {
+    "mtime": 1787430767.7169027,
+    "ast_hash": "a5819f2b5867a14b587f01536d078d50",
+    "semantic_hash": "a5819f2b5867a14b587f01536d078d50"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\equipo_ver.php": {
+    "mtime": 1786388929.1559875,
+    "ast_hash": "0a51e3028f58f26ba30738bd8bca14d8",
+    "semantic_hash": "0a51e3028f58f26ba30738bd8bca14d8"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\etiqueta.php": {
+    "mtime": 1786390170.936831,
+    "ast_hash": "31638e614e247d214f3b703a16c44213",
+    "semantic_hash": "31638e614e247d214f3b703a16c44213"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\etiquetas_lote.php": {
+    "mtime": 1786390128.765436,
+    "ast_hash": "c272f57280f54fab75b169d1e5d9491d",
+    "semantic_hash": "c272f57280f54fab75b169d1e5d9491d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramienta_requisicion_imprimir.php": {
+    "mtime": 1786387168.2105188,
+    "ast_hash": "bf8cf7a484b46eac1d77d2f4d09506bd",
+    "semantic_hash": "bf8cf7a484b46eac1d77d2f4d09506bd"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramienta_requisicion_ver.php": {
+    "mtime": 1786387114.498406,
+    "ast_hash": "002f78b1407db13c73271e1c5e477899",
+    "semantic_hash": "002f78b1407db13c73271e1c5e477899"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramienta_ver.php": {
+    "mtime": 1786388929.1408775,
+    "ast_hash": "702e2e96ad201e87ee71f39e0a93781b",
+    "semantic_hash": "702e2e96ad201e87ee71f39e0a93781b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramientas.php": {
+    "mtime": 1786390170.910828,
+    "ast_hash": "27a9a317f59ad56d770b68287d25da85",
+    "semantic_hash": "27a9a317f59ad56d770b68287d25da85"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramientas_prestamo.php": {
+    "mtime": 1780101950.0,
+    "ast_hash": "a040fa1387d6f124d341d7cc90455c32",
+    "semantic_hash": "a040fa1387d6f124d341d7cc90455c32"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\herramientas_requisiciones.php": {
+    "mtime": 1786386906.5301611,
+    "ast_hash": "80d52701d30060556c91a7523d00f6fc",
+    "semantic_hash": "80d52701d30060556c91a7523d00f6fc"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\incidencia_editar.php": {
+    "mtime": 1783636662.027926,
+    "ast_hash": "8c52b71b822b6ac6da1440e4b1112927",
+    "semantic_hash": "8c52b71b822b6ac6da1440e4b1112927"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\incidencia_nueva.php": {
+    "mtime": 1783636073.517913,
+    "ast_hash": "ab3a2e162ba04cab32b7b67109167701",
+    "semantic_hash": "ab3a2e162ba04cab32b7b67109167701"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\incidencia_refacciones.php": {
+    "mtime": 1780028696.457784,
+    "ast_hash": "b9712f8ef6637cef2135f0d35812b22f",
+    "semantic_hash": "b9712f8ef6637cef2135f0d35812b22f"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\incidencia_ver.php": {
+    "mtime": 1783556374.3267522,
+    "ast_hash": "06c6b1f28b7422dcb5bf7620c07118f7",
+    "semantic_hash": "06c6b1f28b7422dcb5bf7620c07118f7"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\info.php": {
+    "mtime": 1786391290.579303,
+    "ast_hash": "a92312aae65c02436e4cb4db945df40b",
+    "semantic_hash": "a92312aae65c02436e4cb4db945df40b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\lectura_nueva.php": {
+    "mtime": 1781732176.4052022,
+    "ast_hash": "da2c81943a5605bc1eef79755ad09aad",
+    "semantic_hash": "da2c81943a5605bc1eef79755ad09aad"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\lecturas_captura.php": {
+    "mtime": 1780864013.38555,
+    "ast_hash": "16d130d867bc1aea804ab66eaa348ed0",
+    "semantic_hash": "16d130d867bc1aea804ab66eaa348ed0"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\login.php": {
+    "mtime": 1787430589.1423595,
+    "ast_hash": "486ba35c51502b0fe693fcb93e13d38d",
+    "semantic_hash": "486ba35c51502b0fe693fcb93e13d38d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\logout.php": {
+    "mtime": 1779310867.0,
+    "ast_hash": "dbbeefd9fdb64d1a1b49fc1df852b674",
+    "semantic_hash": "dbbeefd9fdb64d1a1b49fc1df852b674"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mantenimiento_editar.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "5ecd9667b4688337f154590211af9e20",
+    "semantic_hash": "5ecd9667b4688337f154590211af9e20"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mantenimiento_nuevo.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "9be826381ba965c25712706b40f4ed66",
+    "semantic_hash": "9be826381ba965c25712706b40f4ed66"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mantenimiento_ver.php": {
+    "mtime": 1782339340.9008448,
+    "ast_hash": "e78f96bd3fc5df17a76e8d66b0ac9eef",
+    "semantic_hash": "e78f96bd3fc5df17a76e8d66b0ac9eef"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mantenimientos.php": {
+    "mtime": 1779660950.0,
+    "ast_hash": "3cb768817837490ad716e1bfb9c85b4a",
+    "semantic_hash": "3cb768817837490ad716e1bfb9c85b4a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mapa_sucursal.php": {
+    "mtime": 1783558215.0413823,
+    "ast_hash": "3d96accc2e378b82000de1ba109e7e41",
+    "semantic_hash": "3d96accc2e378b82000de1ba109e7e41"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\medidor_ver.php": {
+    "mtime": 1782071219.254902,
+    "ast_hash": "070260d0cbd6708923b961114273880d",
+    "semantic_hash": "070260d0cbd6708923b961114273880d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\medidores.php": {
+    "mtime": 1782172422.1676717,
+    "ast_hash": "e265502b668accb3aad3cdca0fb0f7c3",
+    "semantic_hash": "e265502b668accb3aad3cdca0fb0f7c3"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\mi_perfil.php": {
+    "mtime": 1783556995.8330686,
+    "ast_hash": "2620af2ae5a1bcdedde4d993c7b99a42",
+    "semantic_hash": "2620af2ae5a1bcdedde4d993c7b99a42"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\notificaciones.php": {
+    "mtime": 1779439758.0,
+    "ast_hash": "fd13469736899b2e33068b3d6f0ecd88",
+    "semantic_hash": "fd13469736899b2e33068b3d6f0ecd88"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\proveedor_ver.php": {
+    "mtime": 1782339340.9151525,
+    "ast_hash": "8e7d217de4470c848768c897d661db3a",
+    "semantic_hash": "8e7d217de4470c848768c897d661db3a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\proveedores.php": {
+    "mtime": 1782339313.4763432,
+    "ast_hash": "a474918df3ea17fb179b97854cbf1f14",
+    "semantic_hash": "a474918df3ea17fb179b97854cbf1f14"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\recordatorios.php": {
+    "mtime": 1779697896.0,
+    "ast_hash": "85de7e056ceb82329974a72ae45ea7d5",
+    "semantic_hash": "85de7e056ceb82329974a72ae45ea7d5"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\refaccion_ver.php": {
+    "mtime": 1786388929.1273627,
+    "ast_hash": "7be3d5489a564abb99b6a7225ad6f670",
+    "semantic_hash": "7be3d5489a564abb99b6a7225ad6f670"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\refacciones.php": {
+    "mtime": 1784578212.0525758,
+    "ast_hash": "0b7c73e77f848b1b2d167e5aa3c3f539",
+    "semantic_hash": "0b7c73e77f848b1b2d167e5aa3c3f539"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\refacciones_movimientos.php": {
+    "mtime": 1780036626.0,
+    "ast_hash": "bdf3460b011b00ef8eb9e511551dd830",
+    "semantic_hash": "bdf3460b011b00ef8eb9e511551dd830"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\refacciones_requisiciones.php": {
+    "mtime": 1784578764.4746017,
+    "ast_hash": "996c5c217e6cd2acd53a54b2f9e920e8",
+    "semantic_hash": "996c5c217e6cd2acd53a54b2f9e920e8"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\incidencia_imprimir.php": {
+    "mtime": 1786386024.3444717,
+    "ast_hash": "e535919a3c046a67cb989a21d88f8c39",
+    "semantic_hash": "e535919a3c046a67cb989a21d88f8c39"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_costos.php": {
+    "mtime": 1787430695.2779524,
+    "ast_hash": "00cddcd5bc042436a2f243676e63f22d",
+    "semantic_hash": "00cddcd5bc042436a2f243676e63f22d"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_costos_seccion_export.php": {
+    "mtime": 1787430675.2848809,
+    "ast_hash": "c1f225fbfefde31d30512dd1176880b1",
+    "semantic_hash": "c1f225fbfefde31d30512dd1176880b1"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_mensual.php": {
+    "mtime": 1784245769.0614114,
+    "ast_hash": "79d45d75bbc223af7b4a8b1de3fb3d5e",
+    "semantic_hash": "79d45d75bbc223af7b4a8b1de3fb3d5e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_reincidencias.php": {
+    "mtime": 1784245955.2911856,
+    "ast_hash": "83305cc20ee7913e5a4ad44bc7548c57",
+    "semantic_hash": "83305cc20ee7913e5a4ad44bc7548c57"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_sla.php": {
+    "mtime": 1784245845.7657733,
+    "ast_hash": "321fabf6d8d632456e8c734a9a633a58",
+    "semantic_hash": "321fabf6d8d632456e8c734a9a633a58"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reporte_tecnicos.php": {
+    "mtime": 1784245889.466914,
+    "ast_hash": "c84ddecfc6f359e1833387663084157b",
+    "semantic_hash": "c84ddecfc6f359e1833387663084157b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes\\reportes.php": {
+    "mtime": 1782246499.1010387,
+    "ast_hash": "bd7bc09270fa3454a34c32847115ebeb",
+    "semantic_hash": "bd7bc09270fa3454a34c32847115ebeb"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\reportes_mantenimiento.php": {
+    "mtime": 1786486661.0567136,
+    "ast_hash": "bd77353de8c8ad142e1bdaabb8ba312f",
+    "semantic_hash": "bd77353de8c8ad142e1bdaabb8ba312f"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\requisicion_imprimir.php": {
+    "mtime": 1784579205.2963145,
+    "ast_hash": "07e186747ed3a549fe92a608d970acad",
+    "semantic_hash": "07e186747ed3a549fe92a608d970acad"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\requisicion_ver.php": {
+    "mtime": 1784579792.854218,
+    "ast_hash": "1b12fda00cf65e92488e238c57f1f962",
+    "semantic_hash": "1b12fda00cf65e92488e238c57f1f962"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\root\\generar_datos_demo.php": {
+    "mtime": 1779315106.0,
+    "ast_hash": "329d1d81734b56a84cd0fe9aa8911a13",
+    "semantic_hash": "329d1d81734b56a84cd0fe9aa8911a13"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\root\\setup.php": {
+    "mtime": 1786386076.0915372,
+    "ast_hash": "fc691feb0db4484b26b47df27da950f8",
+    "semantic_hash": "fc691feb0db4484b26b47df27da950f8"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\vault.php": {
+    "mtime": 1782666566.9964106,
+    "ast_hash": "6949f3e80a7b679e8315b3f70b247638",
+    "semantic_hash": "6949f3e80a7b679e8315b3f70b247638"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\vault_entrada.php": {
+    "mtime": 1779922504.0,
+    "ast_hash": "e70993c684609eb10c994ae519f5e9a0",
+    "semantic_hash": "e70993c684609eb10c994ae519f5e9a0"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\.cpanel.yml": {
+    "mtime": 1787441814.211629,
+    "ast_hash": "b86792d065641ec97e75165f780c486e",
+    "semantic_hash": "b86792d065641ec97e75165f780c486e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\js\\lucide-LICENSE.txt": {
+    "mtime": 1782070359.7631953,
+    "ast_hash": "457562d70a4702c994473da969e9b24b",
+    "semantic_hash": "457562d70a4702c994473da969e9b24b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-16x16.png": {
+    "mtime": 1779901921.9839807,
+    "ast_hash": "0f4cc96f00bdb6d42c3e49187f9781e6",
+    "semantic_hash": "0f4cc96f00bdb6d42c3e49187f9781e6"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-180x180.png": {
+    "mtime": 1779901922.023531,
+    "ast_hash": "453d6c02d28bb1cd966ea19f27355a01",
+    "semantic_hash": "453d6c02d28bb1cd966ea19f27355a01"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-192x192.png": {
+    "mtime": 1779901922.033413,
+    "ast_hash": "9621e3a0acefa8a557cfe7221de5cf50",
+    "semantic_hash": "9621e3a0acefa8a557cfe7221de5cf50"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-32x32.png": {
+    "mtime": 1779901921.9935102,
+    "ast_hash": "028e40b48b6d4c4aedee2d7e6a42ed0a",
+    "semantic_hash": "028e40b48b6d4c4aedee2d7e6a42ed0a"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-48x48.png": {
+    "mtime": 1779901922.0046678,
+    "ast_hash": "a344e2490e34570b5486d1370b9c7e23",
+    "semantic_hash": "a344e2490e34570b5486d1370b9c7e23"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-512x512.png": {
+    "mtime": 1779901922.04504,
+    "ast_hash": "5db9089bf72edf12f46374d206e5a214",
+    "semantic_hash": "5db9089bf72edf12f46374d206e5a214"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\alternativa-con-insignia\\favicon-badge-64x64.png": {
+    "mtime": 1779901922.0138135,
+    "ast_hash": "1145da61363b6aac3a7bfacc1cd0012c",
+    "semantic_hash": "1145da61363b6aac3a7bfacc1cd0012c"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\android-chrome-192x192.png": {
+    "mtime": 1779901921.916251,
+    "ast_hash": "5074f5cf7f318a6c4d81c0267a90241b",
+    "semantic_hash": "5074f5cf7f318a6c4d81c0267a90241b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\android-chrome-512x512.png": {
+    "mtime": 1779901921.9286065,
+    "ast_hash": "66558744b0ca2701f06a8c3ee54f3849",
+    "semantic_hash": "66558744b0ca2701f06a8c3ee54f3849"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\apple-touch-icon.png": {
+    "mtime": 1779901921.9068387,
+    "ast_hash": "1e72cda6d9ef7168d9d34b1b7fa4184b",
+    "semantic_hash": "1e72cda6d9ef7168d9d34b1b7fa4184b"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon-16x16.png": {
+    "mtime": 1779901921.866324,
+    "ast_hash": "f5a07e534a57cc225cbaec800b363ee2",
+    "semantic_hash": "f5a07e534a57cc225cbaec800b363ee2"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon-32x32.png": {
+    "mtime": 1779901921.875661,
+    "ast_hash": "b67e751a5388b9eea852fc7d41674827",
+    "semantic_hash": "b67e751a5388b9eea852fc7d41674827"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon-48x48.png": {
+    "mtime": 1779901921.8867457,
+    "ast_hash": "d19df26a6f2e66dbae8a8a73561b70d7",
+    "semantic_hash": "d19df26a6f2e66dbae8a8a73561b70d7"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon-512x512.png": {
+    "mtime": 1779901921.8323681,
+    "ast_hash": "66558744b0ca2701f06a8c3ee54f3849",
+    "semantic_hash": "66558744b0ca2701f06a8c3ee54f3849"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon-64x64.png": {
+    "mtime": 1779901921.8963778,
+    "ast_hash": "9aa12857af8b4c5f6fd6d8662af46892",
+    "semantic_hash": "9aa12857af8b4c5f6fd6d8662af46892"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\favicon.png": {
+    "mtime": 1779901921.8557284,
+    "ast_hash": "5db9089bf72edf12f46374d206e5a214",
+    "semantic_hash": "5db9089bf72edf12f46374d206e5a214"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\Recursos\\favicon_el_grano_de_oro_optimizado\\preview-favicon.png": {
+    "mtime": 1779901921.9674888,
+    "ast_hash": "a5def410a69fe41a50645c4137a144d9",
+    "semantic_hash": "a5def410a69fe41a50645c4137a144d9"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\img\\logo-blanco.png": {
+    "mtime": 1781475091.3900926,
+    "ast_hash": "e1d8f1b0e0590ae165025088c4ea65ae",
+    "semantic_hash": "e1d8f1b0e0590ae165025088c4ea65ae"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\img\\logo-corral.png": {
+    "mtime": 1683404290.504414,
+    "ast_hash": "f30dd95fea2889914ef678ae0f5e306e",
+    "semantic_hash": "f30dd95fea2889914ef678ae0f5e306e"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\assets\\img\\logo-negro.png": {
+    "mtime": 1781475430.4391196,
+    "ast_hash": "c2e53b8956b6e2c237a0e9e527a64e78",
+    "semantic_hash": "c2e53b8956b6e2c237a0e9e527a64e78"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\favicon.png": {
+    "mtime": 1779901921.8557284,
+    "ast_hash": "5db9089bf72edf12f46374d206e5a214",
+    "semantic_hash": "5db9089bf72edf12f46374d206e5a214"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\uploads\\planos\\plano_p1_1779914597.png": {
+    "mtime": 1779914597.6021395,
+    "ast_hash": "cc77effbb368777f5b33c2f599f12861",
+    "semantic_hash": "cc77effbb368777f5b33c2f599f12861"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\uploads\\planos\\plano_p2_1779914615.png": {
+    "mtime": 1779914615.5822563,
+    "ast_hash": "59094a2ed4b7c5de898d75ff7466c4e5",
+    "semantic_hash": "59094a2ed4b7c5de898d75ff7466c4e5"
+  },
+  "C:\\xampp\\htdocs\\UtilidadesBacal\\SIGMA\\uploads\\planos\\plano_p3_1779914625.png": {
+    "mtime": 1779914625.0656679,
+    "ast_hash": "cd5864f63099aca5d7badb10ca8e0d60",
+    "semantic_hash": "cd5864f63099aca5d7badb10ca8e0d60"
   }
 }

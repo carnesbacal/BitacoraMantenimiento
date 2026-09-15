@@ -417,6 +417,67 @@ function costos_mano_obra_por_tecnico(string $desde, string $hasta, string $extr
 }
 
 // ============================================================================
+// REPARTO DE MATERIALES EN TRABAJOS EXTERNOS
+// ============================================================================
+
+/**
+ * Reparte el costo de materiales de un trabajo EXTERNO entre lo que facturó el
+ * proveedor y lo que compró la empresa por su cuenta.
+ *
+ * $origen: 'proveedor' (todo lo facturó él) | 'interno' (lo compramos nosotros)
+ *          | 'mixto' (se reparte según $pct_proveedor).
+ *
+ * Devuelve [monto_proveedor, monto_interno]; null en el lado que no aplica.
+ * En 'mixto' el monto interno es el REMANENTE exacto del total, para que la
+ * suma siempre cuadre con lo capturado (sin descuadres de centavos).
+ */
+function repartir_materiales_externo(bool $es_externo, $total, string $origen, $pct_proveedor): array {
+    if (!$es_externo || $total === '' || $total === null) {
+        return [null, null];
+    }
+    $total = round((float) $total, 2);
+    if ($total <= 0) {
+        return [null, null];
+    }
+
+    if ($origen === 'interno') {
+        return [null, $total];
+    }
+    if ($origen !== 'mixto') {
+        return [$total, null]; // 'proveedor' y cualquier valor inesperado
+    }
+
+    $pct = max(0.0, min(100.0, (float) $pct_proveedor));
+    $monto_proveedor = round($total * $pct / 100, 2);
+    $monto_interno   = round($total - $monto_proveedor, 2);
+
+    return [
+        $monto_proveedor > 0 ? $monto_proveedor : null,
+        $monto_interno   > 0 ? $monto_interno   : null,
+    ];
+}
+
+/**
+ * Inverso de repartir_materiales_externo(): a partir de los montos ya guardados
+ * deduce cómo debe arrancar el control en el formulario de edición.
+ *
+ * Devuelve [origen, total, pct_proveedor].
+ */
+function derivar_origen_materiales($monto_proveedor, $monto_interno): array {
+    $mp = (float) ($monto_proveedor ?? 0);
+    $mi = (float) ($monto_interno ?? 0);
+
+    if ($mp > 0 && $mi > 0) {
+        $total = round($mp + $mi, 2);
+        return ['mixto', $total, round($mp / $total * 100, 2)];
+    }
+    if ($mi > 0) {
+        return ['interno', $mi, 0];
+    }
+    return ['proveedor', $mp > 0 ? $mp : '', 100];
+}
+
+// ============================================================================
 // FORMATEO
 // ============================================================================
 
