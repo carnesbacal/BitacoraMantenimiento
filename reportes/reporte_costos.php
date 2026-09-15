@@ -4,7 +4,7 @@
  * reportes/reporte_costos.php - Análisis de costos de mantenimiento
  * ============================================================================
  * Reporte completo y filtrable de costos:
- *   - KPIs: total, externo (proveedores), interno (refacciones), promedio
+ *   - KPIs: total, externo (proveedores), interno (refacciones + materiales + mano de obra), promedio
  *   - Tendencia por día / semana / mes
  *   - Desglose interno vs externo
  *   - Ranking de incidencias más caras
@@ -18,6 +18,12 @@ require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/reportes_helpers.php';
 require_once __DIR__ . '/../config/incidencia_costos_helpers.php';
+
+// IMPORTANTE: las rutas de exportacion (CSV/XLSX) emiten el archivo y hacen
+// exit ANTES de incluir header.php, que es quien normalmente exige la sesion.
+// Sin esta linea, ?exportar=csv y ?exportar=xlsx entregan el reporte completo
+// sin haber iniciado sesion. El menu ya limita este reporte a 'ver_reportes'.
+requerir_permiso('ver_reportes');
 
 $periodo = resolver_periodo();
 [$sucursal_filtro, $sucursales_lista, $where_sucursal, $params_sucursal] = resolver_filtro_sucursal();
@@ -107,7 +113,7 @@ if ($es_exportacion) {
     csv_fila(['Costo externo (proveedores)', number_format($resumen['externo'], 2, '.', '')]);
     csv_fila(['  Mano de obra', number_format($resumen['mano_obra'], 2, '.', '')]);
     csv_fila(['  Materiales proveedor', number_format($resumen['materiales'], 2, '.', '')]);
-    csv_fila(['Costo interno (refacciones)', number_format($resumen['interno'], 2, '.', '')]);
+    csv_fila(['Costo interno', number_format($resumen['interno'], 2, '.', '')]);
     csv_fila(['Adquisiciones · compras de refacciones (incl. requisiciones)', number_format((float) $adq_refacc['total'], 2, '.', '')]);
     csv_fila(['Adquisiciones · equipos comprados', number_format((float) $adq_equipos['total'], 2, '.', '')]);
     csv_fila(['TOTAL DEL MES (incidencias + adquisiciones)', number_format($gran_total, 2, '.', '')]);
@@ -211,7 +217,7 @@ if ($es_xlsx) {
     $xlsx->addRow(['Costo externo (proveedores)', $mny($resumen['externo'])]);
     $xlsx->addRow(['  Mano de obra', $mny($resumen['mano_obra'])]);
     $xlsx->addRow(['  Materiales proveedor', $mny($resumen['materiales'])]);
-    $xlsx->addRow(['Costo interno (refacciones)', $mny($resumen['interno'])]);
+    $xlsx->addRow(['Costo interno', $mny($resumen['interno'])]);
     $xlsx->addRow(['Incidencias en el período', (int) $resumen['num_total']]);
     $xlsx->addRow(['  Con costo', (int) $resumen['con_costo']]);
     $xlsx->addRow(['  Con proveedor', (int) $resumen['con_proveedor']]);
@@ -231,7 +237,7 @@ if ($es_xlsx) {
     $xlsx->addRow(array_merge(['Costo de incidencias'],  $cmp($resumen['total'],     $resumen_prev['total'])));
     $xlsx->addRow(array_merge(['TOTAL del mes (todo)'],  $cmp($gran_total,           $gran_total_prev)));
     $xlsx->addRow(array_merge(['Externo (proveedores)'], $cmp($resumen['externo'],   $resumen_prev['externo'])));
-    $xlsx->addRow(array_merge(['Interno (refacciones)'], $cmp($resumen['interno'],   $resumen_prev['interno'])));
+    $xlsx->addRow(array_merge(['Interno'],               $cmp($resumen['interno'],   $resumen_prev['interno'])));
     $xlsx->addRow(array_merge(['Incidencias'],           $cmp($resumen['num_total'], $resumen_prev['num_total'], false)));
 
     // Hoja 2: Incidencias con costo (todas)
@@ -239,9 +245,19 @@ if ($es_xlsx) {
     $xlsx->addHeaderRow(['INCIDENCIAS CON COSTO (' . count($inc_full) . ')'], true);
     $xlsx->addRow([$periodo_label]);
     $xlsx->addBlankRow();
-    $xlsx->addHeaderRow(['Fecha', 'Folio', 'Título', 'Sucursal', 'Atendió', 'Mano obra', 'Materiales', 'Refacciones', 'Mat. comprados', 'MO interna', 'Total'], true);
+    // La mano de obra interna son salarios: solo la ven los administradores.
+    // Para el resto se omite la columna Y se descuenta del total, porque si no
+    // el dato se podria inferir restando las demas columnas.
+    $ver_moi  = puede_ver_mano_obra_interna();
+    $suma_inc = fn(string $col) => array_sum(array_map(fn($x) => (float) $x[$col], $inc_full));
+
+    $enc_inc = ['Fecha', 'Folio', 'Título', 'Sucursal', 'Atendió', 'Mano obra', 'Materiales', 'Refacciones', 'Mat. comprados'];
+    if ($ver_moi) $enc_inc[] = 'MO interna';
+    $enc_inc[] = 'Total';
+    $xlsx->addHeaderRow($enc_inc, true);
+
     foreach ($inc_full as $r) {
-        $xlsx->addRow([
+        $fila = [
             date('Y-m-d', strtotime($r['fecha_evento'])),
             $r['folio'], $r['titulo'], $r['sucursal_nombre'],
             $r['proveedor_nombre'] ?: ($r['proveedor_externo_info'] ?: 'Interno'),
@@ -249,19 +265,26 @@ if ($es_xlsx) {
             $mny($r['materiales']),
             $mny($r['refacciones']),
             $mny($r['materiales_comprados']),
-            $mny($r['mano_obra_interna']),
-            $mny($r['total']),
-        ]);
+        ];
+        if ($ver_moi) $fila[] = $mny($r['mano_obra_interna']);
+        $fila[] = $mny($ver_moi
+            ? (float) $r['total']
+            : (float) $r['total'] - (float) $r['mano_obra_interna']);
+        $xlsx->addRow($fila);
     }
+
     $xlsx->addBlankRow();
-    $xlsx->addRow(['', '', '', '', 'TOTAL',
-        $mny(array_sum(array_map(fn($x) => (float) $x['mano_obra'], $inc_full))),
-        $mny(array_sum(array_map(fn($x) => (float) $x['materiales'], $inc_full))),
-        $mny(array_sum(array_map(fn($x) => (float) $x['refacciones'], $inc_full))),
-        $mny(array_sum(array_map(fn($x) => (float) $x['materiales_comprados'], $inc_full))),
-        $mny(array_sum(array_map(fn($x) => (float) $x['mano_obra_interna'], $inc_full))),
-        $mny(array_sum(array_map(fn($x) => (float) $x['total'], $inc_full))),
-    ]);
+    $fila_total = ['', '', '', '', 'TOTAL',
+        $mny($suma_inc('mano_obra')),
+        $mny($suma_inc('materiales')),
+        $mny($suma_inc('refacciones')),
+        $mny($suma_inc('materiales_comprados')),
+    ];
+    if ($ver_moi) $fila_total[] = $mny($suma_inc('mano_obra_interna'));
+    $fila_total[] = $mny($ver_moi
+        ? $suma_inc('total')
+        : $suma_inc('total') - $suma_inc('mano_obra_interna'));
+    $xlsx->addRow($fila_total);
 
     // Hoja 3: Proveedores
     $xlsx->addSheet('Proveedores');
@@ -509,7 +532,7 @@ require_once __DIR__ . '/../config/header.php';
         </div>
         <?php
         $desglose = [
-            ['Incidencias · refacciones internas (consumo)', (float) $resumen['interno'],   'bg-zinc-400'],
+            ['Incidencias · gasto interno (refacciones, materiales, mano de obra)', (float) $resumen['interno'],   'bg-zinc-400'],
             ['Incidencias · proveedores (mano de obra + materiales)', (float) $resumen['externo'], 'bg-bacal-600'],
             ['Refacciones compradas' . ((float) $adq_refacc['piezas'] > 0 ? ' · ' . rtrim(rtrim(number_format((float) $adq_refacc['piezas'], 2), '0'), '.') . ' pza(s)' : ''), (float) $adq_refacc['total'], 'bg-emerald-500'],
             ['Equipos comprados' . ((int) $adq_equipos['equipos'] > 0 ? ' · ' . (int) $adq_equipos['equipos'] : ''), (float) $adq_equipos['total'], 'bg-emerald-700'],
@@ -556,7 +579,7 @@ require_once __DIR__ . '/../config/header.php';
                     <span class="font-semibold"><?= e(fmt_dinero($resumen['externo'])) ?></span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-zinc-400"></span> Refacciones</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-zinc-400"></span> Interno</span>
                     <span class="font-semibold"><?= e(fmt_dinero($resumen['interno'])) ?></span>
                 </div>
             </div>
